@@ -30,12 +30,14 @@ jobs:
       - run: go run ./tools/hostile && git diff --exit-code -- corpus/hostile
 
       # A short fuzz budget per target; the seed corpora are committed.
+      # tools/fuzz.sh fails on a finding and not on the harness ending its
+      # own budget mid-execution.
       - run: |
-          go test ./internal/cjson -run '^$' -fuzz=FuzzParse -fuzztime=60s
-          go test ./internal/tst -run '^$' -fuzz=FuzzParseToken -fuzztime=60s
-          go test ./internal/tst -run '^$' -fuzz=FuzzRead -fuzztime=30s
-          go test ./internal/bundle -run '^$' -fuzz=FuzzZip -fuzztime=60s
-          go test ./internal/bundle -run '^$' -fuzz=FuzzLines -fuzztime=30s
+          sh tools/fuzz.sh ./internal/cjson FuzzParse 60s
+          sh tools/fuzz.sh ./internal/tst FuzzParseToken 60s
+          sh tools/fuzz.sh ./internal/tst FuzzRead 30s
+          sh tools/fuzz.sh ./internal/bundle FuzzZip 60s
+          sh tools/fuzz.sh ./internal/bundle FuzzLines 30s
 
   differential:
     runs-on: ubuntu-latest

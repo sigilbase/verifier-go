@@ -52,11 +52,11 @@ jobs:
           go-version-file: go.mod
 
       - run: |
-          go test ./internal/cjson -run '^$' -fuzz=FuzzParse -fuzztime=15m
-          go test ./internal/tst -run '^$' -fuzz=FuzzParseToken -fuzztime=15m
-          go test ./internal/tst -run '^$' -fuzz=FuzzRead -fuzztime=5m
-          go test ./internal/bundle -run '^$' -fuzz=FuzzZip -fuzztime=15m
-          go test ./internal/bundle -run '^$' -fuzz=FuzzLines -fuzztime=5m
+          sh tools/fuzz.sh ./internal/cjson FuzzParse 15m
+          sh tools/fuzz.sh ./internal/tst FuzzParseToken 15m
+          sh tools/fuzz.sh ./internal/tst FuzzRead 5m
+          sh tools/fuzz.sh ./internal/bundle FuzzZip 15m
+          sh tools/fuzz.sh ./internal/bundle FuzzLines 5m
 
       - if: failure()
         uses: actions/upload-artifact@v4
