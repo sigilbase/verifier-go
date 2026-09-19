@@ -83,14 +83,17 @@ jobs:
         with:
           go-version-file: a/go.mod
 
-      # The version is the tag without its leading v; the reference
-      # verify.php must carry the same version, since the two release together.
+      # The version is the tag without its leading v. A release candidate
+      # (v1.6.0-rc.1) carries its suffix in the binaries' names and version
+      # string; the reference verify.php must carry the base version, since
+      # the two release together.
       - id: version
         run: |
           version="${GITHUB_REF_NAME#v}"
+          base="${version%%-*}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if ! grep -q "const VERIFIER_VERSION = '$version';" a/reference/verify.php; then
-            echo "reference/verify.php's VERIFIER_VERSION is not $version"; exit 1
+          if ! grep -q "const VERIFIER_VERSION = '$base';" a/reference/verify.php; then
+            echo "reference/verify.php's VERIFIER_VERSION is not $base"; exit 1
           fi
 
       - run: cd a && sh tools/build-release.sh "${{ steps.version.outputs.version }}" dist
@@ -124,9 +127,12 @@ jobs:
         with:
           subject-path: dist/sigilbase-verify_*
 
+      # A tag with a suffix (v1.6.0-rc.1) is a pre-release.
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease";; esac
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "$GITHUB_REF_NAME" \
-            --notes-from-tag
+            --notes-from-tag $prerelease
