@@ -1,0 +1,11 @@
+{
+    "keys": [
+        {
+            "algorithm": "ed25519",
+            "created_at": "2025-01-01T00:00:00.000000Z",
+            "key_id": "21fe31dfa154a261",
+            "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+            "retired_at": "2026-01-01T00:00:00.000000Z"
+        }
+    ]
+}

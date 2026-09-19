@@ -1,0 +1,1159 @@
+{
+    "note": "Golden vectors for the hashed constructions. Inputs and outputs, both fixed for the life of v1.",
+    "canonical_json": [
+        {
+            "value": {
+                "amount": 1250,
+                "currency": "GBP",
+                "note": "a \"quoted\" value, é"
+            },
+            "canonical": "{\"amount\":1250,\"currency\":\"GBP\",\"note\":\"a \\\"quoted\\\" value, é\"}",
+            "sha256": "949b3ea2c16b0107cac58f400e23b802a8e16ab372bc6c86d8632519f31e260d"
+        },
+        {
+            "value": {
+                "b": 1,
+                "a": 2
+            },
+            "canonical": "{\"a\":2,\"b\":1}"
+        },
+        {
+            "value": [
+                1,
+                2,
+                3
+            ],
+            "canonical": "[1,2,3]"
+        },
+        {
+            "value": {
+                "outer": {
+                    "inner": [
+                        1,
+                        2
+                    ]
+                },
+                "z": true
+            },
+            "canonical": "{\"outer\":{\"inner\":[1,2]},\"z\":true}"
+        },
+        {
+            "value": {
+                "tab": "a\tb",
+                "quote": "say \"hi\"",
+                "unicode": "naïve"
+            },
+            "canonical": "{\"quote\":\"say \\\"hi\\\"\",\"tab\":\"a\\tb\",\"unicode\":\"naïve\"}"
+        }
+    ],
+    "entry_hash": {
+        "stream": "01890000-0000-7000-8000-000000000001",
+        "seq": 1,
+        "occurred_at": "2026-01-02T03:04:05.000000Z",
+        "received_at": "2026-01-02T03:04:06.000000Z",
+        "actor": "user:42",
+        "action": "invoice.voided",
+        "resource": "invoice:inv_9f21",
+        "payload_hash": "949b3ea2c16b0107cac58f400e23b802a8e16ab372bc6c86d8632519f31e260d",
+        "prev": "0000000000000000000000000000000000000000000000000000000000000000",
+        "preimage": "{\"action\":\"invoice.voided\",\"actor\":\"user:42\",\"occurred_at\":\"2026-01-02T03:04:05.000000Z\",\"payload_hash\":\"949b3ea2c16b0107cac58f400e23b802a8e16ab372bc6c86d8632519f31e260d\",\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"received_at\":\"2026-01-02T03:04:06.000000Z\",\"resource\":\"invoice:inv_9f21\",\"seq\":1,\"stream\":\"01890000-0000-7000-8000-000000000001\",\"v\":1}",
+        "entry_hash": "234c2a2cd7e937b336639e5a691b4420f3ffd0b7ab5c9b9e3bd4c3573184d98c"
+    },
+    "chain_link": {
+        "note": "The second entry commits to the first through prev.",
+        "prev": "234c2a2cd7e937b336639e5a691b4420f3ffd0b7ab5c9b9e3bd4c3573184d98c",
+        "entry_hash": "5b92761f6637911706488d705b451b84c3764664a3a9f33bc5b04943973f3c51"
+    },
+    "merkle_root": {
+        "leaves": [
+            "234c2a2cd7e937b336639e5a691b4420f3ffd0b7ab5c9b9e3bd4c3573184d98c",
+            "5b92761f6637911706488d705b451b84c3764664a3a9f33bc5b04943973f3c51"
+        ],
+        "root": "7d1f643ed662fe16fc0eb2715d5a33c70ddf562c2eac24d66504c53a7375424e",
+        "rfc6962_reference_note": "RFC 6962 reference tree over the standard test leaves (raw bytes, hex): \"\", 00, 10, 2021, 3031, 40414243, 5051525354555657, 606162636465666768696a6b6c6d6e6f. Entry n is the root over the first n leaves. Values 3 to 6 were corrected in v1.6.0: the earlier file carried roots that neither verify.php nor the RFC produces, and nothing had checked them.",
+        "rfc6962_reference_leaves": [
+            "",
+            "00",
+            "10",
+            "2021",
+            "3031",
+            "40414243",
+            "5051525354555657",
+            "606162636465666768696a6b6c6d6e6f"
+        ],
+        "rfc6962_reference": [
+            {
+                "leaves": 1,
+                "root": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+            },
+            {
+                "leaves": 2,
+                "root": "fac54203e7cc696cf0dfcb42c92a1d9dbaf70ad9e621f4bd8d98662f00e3c125"
+            },
+            {
+                "leaves": 3,
+                "root": "aeb6bcfe274b70a14fb067a5e5578264db0fa9b51af5e0ba159158f329e06e77"
+            },
+            {
+                "leaves": 4,
+                "root": "d37ee418976dd95753c1c73862b9398fa2a2cf9b4ff0fdfe8b30cd95209614b7"
+            },
+            {
+                "leaves": 5,
+                "root": "4e3bbb1f7b478dcfe71fb631631519a3bca12c9aefca1612bfce4c13a86264d4"
+            },
+            {
+                "leaves": 6,
+                "root": "76e67dadbcdf1e10e1b74ddc608abd2f98dfb16fbce75277b5232a127f2087ef"
+            },
+            {
+                "leaves": 7,
+                "root": "ddb89be403809e325750d3d263cd78929c2942b7942a34b77e122c9594a74c8c"
+            },
+            {
+                "leaves": 8,
+                "root": "5dc9da79a70659a9ad559cb701ded9a2ab9d823aad2f4960cfe370eff4604328"
+            }
+        ]
+    },
+    "checkpoint": {
+        "stream": "01890000-0000-7000-8000-000000000001",
+        "from": 1,
+        "to": 2,
+        "root": "7d1f643ed662fe16fc0eb2715d5a33c70ddf562c2eac24d66504c53a7375424e",
+        "prev_checkpoint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "created_at": "2026-01-02T03:04:09.000000Z",
+        "preimage": "{\"created_at\":\"2026-01-02T03:04:09.000000Z\",\"from\":1,\"prev_checkpoint\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"7d1f643ed662fe16fc0eb2715d5a33c70ddf562c2eac24d66504c53a7375424e\",\"stream\":\"01890000-0000-7000-8000-000000000001\",\"to\":2,\"v\":1}",
+        "checkpoint_hash": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391"
+    },
+    "checkpoint_signature": {
+        "note": "Ed25519 over the raw 32 bytes of checkpoint_hash, under the published test key.",
+        "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+        "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        "signature": "0ec70f0c5a401cf1ba2a4c85b4a85177f40fea6a014201526fb4dcec5c056e69cc4a3cb649786e7ddfd50b3de5c215e6bd0ca2d90336775e4e3fdedd7b3c3408"
+    },
+    "ed25519_acceptance": {
+        "note": "libsodium is normative for Ed25519 acceptance (verify.php verifies through sodium_crypto_sign_verify_detached). Each case was checked against libsodium 1.0.22. A stock RFC 8032 verifier accepts several of the rejected cases; an implementation must reject every case marked reject. Messages are raw 32-byte checkpoint hashes; all values are hex.",
+        "cases": [
+            {
+                "name": "genuine",
+                "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391",
+                "signature": "0ec70f0c5a401cf1ba2a4c85b4a85177f40fea6a014201526fb4dcec5c056e69cc4a3cb649786e7ddfd50b3de5c215e6bd0ca2d90336775e4e3fdedd7b3c3408",
+                "expect": "accept",
+                "note": "the corpus checkpoint signature under the published test key"
+            },
+            {
+                "name": "small-order-r",
+                "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391",
+                "signature": "01000000000000000000000000000000000000000000000000000000000000000be4bb884b68bec033009e5d731d1ddd285464188cca2d7f9d7c83cd2cae7c0a",
+                "expect": "reject",
+                "note": "R is the identity point (order 1); the verification equation holds, libsodium rejects small-order R"
+            },
+            {
+                "name": "small-order-public-key",
+                "public_key": "0100000000000000000000000000000000000000000000000000000000000000",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391",
+                "signature": "58666666666666666666666666666666666666666666666666666666666666660100000000000000000000000000000000000000000000000000000000000000",
+                "expect": "reject",
+                "note": "the public key is the identity point; S*B = R + k*A holds for every message, libsodium rejects small-order public keys"
+            },
+            {
+                "name": "non-canonical-public-key",
+                "public_key": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391",
+                "signature": "58666666666666666666666666666666666666666666666666666666666666660100000000000000000000000000000000000000000000000000000000000000",
+                "expect": "reject",
+                "note": "the public key's y coordinate is p+1, a non-canonical encoding of the identity; libsodium rejects non-canonical public keys"
+            },
+            {
+                "name": "order-8-public-key-26e8958f",
+                "public_key": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391",
+                "signature": "58666666666666666666666666666666666666666666666666666666666666660100000000000000000000000000000000000000000000000000000000000000",
+                "expect": "reject",
+                "note": "the public key has order 8 and the signature was forged without any private key (k*A vanishes when k is a multiple of 8); libsodium rejects small-order public keys"
+            },
+            {
+                "name": "order-8-public-key-c7176a70",
+                "public_key": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391",
+                "signature": "2f1132ca61ab38dff00f2fea3228f24c6c71d58085b80e47e19515cb27e8d0470400000000000000000000000000000000000000000000000000000000000000",
+                "expect": "reject",
+                "note": "the public key has order 8 and the signature was forged without any private key (k*A vanishes when k is a multiple of 8); libsodium rejects small-order public keys"
+            },
+            {
+                "name": "non-canonical-s",
+                "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66391",
+                "signature": "0ec70f0c5a401cf1ba2a4c85b4a85177f40fea6a014201526fb4dcec5c056e69b91e321364db80d5b57203e0c3bcf4fabd0ca2d90336775e4e3fdedd7b3c3418",
+                "expect": "reject",
+                "note": "S is the genuine scalar plus the group order; both libsodium and RFC 8032 reject S >= l"
+            },
+            {
+                "name": "wrong-message",
+                "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+                "message": "37285f17786867eda4150377bdcccf0ec68ce4320db32cca36a59a7d4db66300",
+                "signature": "0ec70f0c5a401cf1ba2a4c85b4a85177f40fea6a014201526fb4dcec5c056e69cc4a3cb649786e7ddfd50b3de5c215e6bd0ca2d90336775e4e3fdedd7b3c3408",
+                "expect": "reject",
+                "note": "a genuine signature over a different message"
+            }
+        ]
+    },
+    "json_parsing": {
+        "note": "Whether a document parses, and what it canonicalises to, as PHP's json_decode in object mode and verify.php's canonical_encode decide it under PHP 8.4.25. Inputs and canonical forms are base64 because several are not valid UTF-8 or contain control characters. verdict is ok or invalid; type is PHP's type of the decoded value; canonical_base64 and sha256 are present when the value canonicalises, canonical_error when it does not. An implementation must accept exactly the ok cases and produce exactly these canonical bytes.",
+        "cases": [
+            {
+                "name": "invalid-utf8-byte",
+                "input_base64": "eyJhIjoi/yJ9",
+                "note": "a byte that is not UTF-8 inside a string",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "overlong-two-byte",
+                "input_base64": "eyJhIjoiwK8ifQ==",
+                "note": "an overlong two-byte encoding of /",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "overlong-three-byte",
+                "input_base64": "eyJhIjoi4ICvIn0=",
+                "note": "an overlong three-byte encoding",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "utf8-encoded-surrogate",
+                "input_base64": "eyJhIjoi7aCAIn0=",
+                "note": "U+D800 encoded directly in UTF-8",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "above-u10ffff",
+                "input_base64": "eyJhIjoi9JCAgCJ9",
+                "note": "a four-byte sequence above U+10FFFF",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "truncated-sequence",
+                "input_base64": "eyJhIjoi4oIifQ==",
+                "note": "a multi-byte sequence cut short",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "invalid-utf8-in-key",
+                "input_base64": "eyL/IjoxfQ==",
+                "note": "invalid UTF-8 in an object key",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "invalid-utf8-after-document",
+                "input_base64": "eyJhIjoxff8=",
+                "note": "invalid UTF-8 after the document",
+                "verdict": "invalid",
+                "php_error": "Malformed UTF-8 characters, possibly incorrectly encoded"
+            },
+            {
+                "name": "lone-high-surrogate-escape",
+                "input_base64": "eyJhIjoiXHVkODAwIn0=",
+                "note": "an escaped high surrogate with no low surrogate",
+                "verdict": "invalid",
+                "php_error": "Single unpaired UTF-16 surrogate in unicode escape"
+            },
+            {
+                "name": "lone-low-surrogate-escape",
+                "input_base64": "eyJhIjoiXHVkYzAwIn0=",
+                "note": "an escaped low surrogate on its own",
+                "verdict": "invalid",
+                "php_error": "Single unpaired UTF-16 surrogate in unicode escape"
+            },
+            {
+                "name": "high-surrogate-then-other-escape",
+                "input_base64": "eyJhIjoiXHVkODAwXHUwMDQxIn0=",
+                "note": "a high surrogate followed by a non-surrogate escape",
+                "verdict": "invalid",
+                "php_error": "Single unpaired UTF-16 surrogate in unicode escape"
+            },
+            {
+                "name": "surrogate-pair",
+                "input_base64": "eyJhIjoiXHVkODM0XHVkZDFlIn0=",
+                "note": "a valid pair decodes to U+1D11E",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoi8J2EniJ9",
+                "sha256": "fb30136d50ba755c7574e1d90e74e844235fe9c57080ec5df85b37f79d8c4641"
+            },
+            {
+                "name": "escaped-nul-value",
+                "input_base64": "eyJhIjoiXHUwMDAwIn0=",
+                "note": "an escaped NUL in a value is allowed and canonicalises as an escape",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoiXHUwMDAwIn0=",
+                "sha256": "f7b95dfbd9df8540bd3e4afbae53b2423868505e94d7822a22d9a2031c7d6642"
+            },
+            {
+                "name": "nul-leading-key",
+                "input_base64": "eyJcdTAwMDBhIjoxfQ==",
+                "note": "a key beginning with NUL is invalid in object mode",
+                "verdict": "invalid",
+                "php_error": "The decoded property name is invalid"
+            },
+            {
+                "name": "nul-inside-key",
+                "input_base64": "eyJhXHUwMDAwYiI6MX0=",
+                "note": "a NUL later in a key is allowed",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhXHUwMDAwYiI6MX0=",
+                "sha256": "a600dc61d5619ff07f026e997fc2cd8f0a8e9a4c84091154d740fdf9feff6858"
+            },
+            {
+                "name": "nul-leading-key-nested",
+                "input_base64": "eyJhIjp7Ilx1MDAwMGIiOjF9fQ==",
+                "note": "the NUL-leading key rule applies at every depth",
+                "verdict": "invalid",
+                "php_error": "The decoded property name is invalid"
+            },
+            {
+                "name": "empty-key",
+                "input_base64": "eyIiOjF9",
+                "note": "the empty key is allowed",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyIiOjF9",
+                "sha256": "f3d86de1bf4b354382f91a12a4487daaeb56692b2c46f2df52f6f83a84610074"
+            },
+            {
+                "name": "duplicate-key-last-wins",
+                "input_base64": "eyJhIjoxLCJhIjoyfQ==",
+                "note": "the last value wins",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoyfQ==",
+                "sha256": "7e8059f495589fcd981232cc11d00b00da3802c01d688fa1cf1f6bed6e5bb33c"
+            },
+            {
+                "name": "duplicate-key-keeps-first-position",
+                "input_base64": "eyJiIjoxLCJhIjoxLCJiIjoyfQ==",
+                "note": "the first position is kept, the last value taken; canonical order is by key anyway",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoxLCJiIjoyfQ==",
+                "sha256": "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777"
+            },
+            {
+                "name": "float-with-fraction",
+                "input_base64": "eyJhIjoxLjB9",
+                "note": "a float, even with a zero fraction; it cannot be canonicalised",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "float-with-exponent",
+                "input_base64": "eyJhIjoxZTJ9",
+                "note": "an exponent makes a float",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "float-upper-exponent-plus",
+                "input_base64": "eyJhIjoxRSsyfQ==",
+                "note": "exponent in upper case with a sign",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "negative-zero-integer",
+                "input_base64": "eyJhIjotMH0=",
+                "note": "-0 is the integer 0",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjowfQ==",
+                "sha256": "45b619e97b5d9b029af4522e9ffb02fa99ff2bf226c82ee22a7cc10269a557e8"
+            },
+            {
+                "name": "negative-zero-float",
+                "input_base64": "eyJhIjotMC4wfQ==",
+                "note": "-0.0 is a float",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "max-safe-integer",
+                "input_base64": "eyJhIjo5MDA3MTk5MjU0NzQwOTkxfQ==",
+                "note": "2^53-1 canonicalises",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjo5MDA3MTk5MjU0NzQwOTkxfQ==",
+                "sha256": "a9af4cfcb37cc6c571d3b396a59af5f6e42c8ea43d06cafc89705e3fb495649d"
+            },
+            {
+                "name": "two-to-the-53",
+                "input_base64": "eyJhIjo5MDA3MTk5MjU0NzQwOTkyfQ==",
+                "note": "2^53 parses as an integer and cannot be canonicalised",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "integer outside the exactly representable range"
+            },
+            {
+                "name": "int64-max",
+                "input_base64": "eyJhIjo5MjIzMzcyMDM2ODU0Nzc1ODA3fQ==",
+                "note": "the largest signed 64-bit integer parses as an integer",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "integer outside the exactly representable range"
+            },
+            {
+                "name": "int64-max-plus-one",
+                "input_base64": "eyJhIjo5MjIzMzcyMDM2ODU0Nzc1ODA4fQ==",
+                "note": "one more is a float",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "int64-min",
+                "input_base64": "eyJhIjotOTIyMzM3MjAzNjg1NDc3NTgwOH0=",
+                "note": "the smallest signed 64-bit integer parses as an integer",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "integer outside the exactly representable range"
+            },
+            {
+                "name": "int64-min-minus-one",
+                "input_base64": "eyJhIjotOTIyMzM3MjAzNjg1NDc3NTgwOX0=",
+                "note": "one less is a float",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "twenty-digits",
+                "input_base64": "eyJhIjoxMDAwMDAwMDAwMDAwMDAwMDAwMH0=",
+                "note": "twenty digits are a float",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "huge-exponent",
+                "input_base64": "eyJhIjoxZTQwMH0=",
+                "note": "beyond double range: a float (infinite)",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "leading-zero",
+                "input_base64": "eyJhIjowMX0=",
+                "note": "leading zeros are invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "negative-leading-zero",
+                "input_base64": "eyJhIjotMDF9",
+                "note": "leading zeros are invalid after a sign too",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "bare-minus",
+                "input_base64": "eyJhIjotfQ==",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "leading-plus",
+                "input_base64": "eyJhIjorMX0=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "bare-fraction",
+                "input_base64": "eyJhIjouNX0=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "trailing-dot",
+                "input_base64": "eyJhIjoxLn0=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "exponent-without-digits",
+                "input_base64": "eyJhIjoxZX0=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "byte-order-mark",
+                "input_base64": "77u/eyJhIjoxfQ==",
+                "note": "a BOM is not whitespace",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "trailing-data",
+                "input_base64": "eyJhIjoxfSB4",
+                "note": "anything after the document is invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "two-documents",
+                "input_base64": "eyJhIjoxfXsiYSI6Mn0=",
+                "note": "a second document is invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "trailing-whitespace",
+                "input_base64": "eyJhIjoxfSAKDQk=",
+                "note": "space, LF, CR and tab are whitespace",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoxfQ==",
+                "sha256": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"
+            },
+            {
+                "name": "leading-whitespace",
+                "input_base64": "IAkKDXsiYSI6MX0=",
+                "note": "space, tab, LF and CR are whitespace",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoxfQ==",
+                "sha256": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"
+            },
+            {
+                "name": "form-feed-outside-string",
+                "input_base64": "DHsiYSI6MX0=",
+                "note": "a form feed is not whitespace",
+                "verdict": "invalid",
+                "php_error": "Control character error, possibly incorrectly encoded"
+            },
+            {
+                "name": "vertical-tab-outside-string",
+                "input_base64": "C3siYSI6MX0=",
+                "note": "a vertical tab is not whitespace",
+                "verdict": "invalid",
+                "php_error": "Control character error, possibly incorrectly encoded"
+            },
+            {
+                "name": "trailing-nul",
+                "input_base64": "eyJhIjoxfQA=",
+                "note": "a NUL after the document is invalid",
+                "verdict": "invalid",
+                "php_error": "Control character error, possibly incorrectly encoded"
+            },
+            {
+                "name": "no-break-space",
+                "input_base64": "wqB7ImEiOjF9",
+                "note": "a no-break space is not whitespace",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "raw-control-0x01",
+                "input_base64": "eyJhIjoiASJ9",
+                "note": "a raw control character inside a string is invalid",
+                "verdict": "invalid",
+                "php_error": "Control character error, possibly incorrectly encoded"
+            },
+            {
+                "name": "raw-control-0x1f",
+                "input_base64": "eyJhIjoiHyJ9",
+                "note": "the last control character is invalid too",
+                "verdict": "invalid",
+                "php_error": "Control character error, possibly incorrectly encoded"
+            },
+            {
+                "name": "raw-delete-0x7f",
+                "input_base64": "eyJhIjoifyJ9",
+                "note": "DEL is allowed raw and is not escaped in the canonical form",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoifyJ9",
+                "sha256": "599df87d312c1247f328cf89d9fbd469522aa6424298636df84ef7a4985dd6bb"
+            },
+            {
+                "name": "raw-tab-in-string",
+                "input_base64": "eyJhIjoiCSJ9",
+                "note": "a raw tab inside a string is invalid",
+                "verdict": "invalid",
+                "php_error": "Control character error, possibly incorrectly encoded"
+            },
+            {
+                "name": "raw-newline-in-string",
+                "input_base64": "eyJhIjoiCiJ9",
+                "note": "a raw newline inside a string is invalid",
+                "verdict": "invalid",
+                "php_error": "Control character error, possibly incorrectly encoded"
+            },
+            {
+                "name": "escaped-solidus",
+                "input_base64": "eyJhIjoiXC8ifQ==",
+                "note": "an escaped solidus canonicalises unescaped",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoiLyJ9",
+                "sha256": "b9293316ef631c94fa2e4c37f6a2d58d13b29f1b43876c71a71233a91aee5525"
+            },
+            {
+                "name": "invalid-escape",
+                "input_base64": "eyJhIjoiXHgifQ==",
+                "note": "an unknown escape is invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "upper-case-hex-escape",
+                "input_base64": "eyJhIjoiXHUwMEU5In0=",
+                "note": "hex digits in either case",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoiw6kifQ==",
+                "sha256": "b3a092a6af48807fa9482b2ee140105575daa26d5b24b3c0e60a7e2dee6683b1"
+            },
+            {
+                "name": "short-hex-escape",
+                "input_base64": "eyJhIjoiXHUwMEUifQ==",
+                "note": "three hex digits are invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "escaped-quote",
+                "input_base64": "eyJhIjoiXHUwMDIyIn0=",
+                "note": "an escaped quotation mark canonicalises as an escaped quotation mark",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoiXCIifQ==",
+                "sha256": "e9ffd850d1365b30e4c699e4802db2b595be76c8ec7ea4a1253313f1068e9b99"
+            },
+            {
+                "name": "escaped-control",
+                "input_base64": "eyJhIjoiXHUwMDFmIn0=",
+                "note": "a control character canonicalises as four lowercase hex digits",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoiXHUwMDFmIn0=",
+                "sha256": "0f09808c8c6967619d957b414b426d05aa7b453196d175241477bf8b68789884"
+            },
+            {
+                "name": "escaped-delete",
+                "input_base64": "eyJhIjoiXHUwMDdmIn0=",
+                "note": "DEL canonicalises raw",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoifyJ9",
+                "sha256": "599df87d312c1247f328cf89d9fbd469522aa6424298636df84ef7a4985dd6bb"
+            },
+            {
+                "name": "escaped-line-separator",
+                "input_base64": "eyJhIjoiXHUyMDI4In0=",
+                "note": "U+2028 canonicalises raw",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoi4oCoIn0=",
+                "sha256": "c0f545e4a8a9c4d8ab310c65a4e2c3ec788c89d5bf91845869f66fb4aa396e8a"
+            },
+            {
+                "name": "depth-511-arrays",
+                "input_base64": "W1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW11dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV0=",
+                "note": "511 nested containers decode",
+                "verdict": "ok",
+                "type": "array",
+                "canonical_base64": "W1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW11dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV0=",
+                "sha256": "de2adb75ff6c0b4c8fff9b0d5a4f99b425a610db26fa75ebc15b97525c69acb8"
+            },
+            {
+                "name": "depth-512-arrays",
+                "input_base64": "W1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tdXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXQ==",
+                "note": "512 nested containers do not",
+                "verdict": "invalid",
+                "php_error": "Maximum stack depth exceeded"
+            },
+            {
+                "name": "depth-511-object-plus-arrays",
+                "input_base64": "eyJhIjpbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tdXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV19",
+                "note": "an object holding 510 nested arrays is 511 deep and decodes",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjpbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tdXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV19",
+                "sha256": "1076151f0d4c67b4cc5377092efa95b1ec08ec77c20dd1533d102bd4a7d7e91e"
+            },
+            {
+                "name": "depth-512-object-plus-arrays",
+                "input_base64": "eyJhIjpbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXX0=",
+                "note": "an object holding 511 nested arrays is 512 deep and does not",
+                "verdict": "invalid",
+                "php_error": "Maximum stack depth exceeded"
+            },
+            {
+                "name": "top-level-integer",
+                "input_base64": "MQ==",
+                "note": "a top-level scalar decodes",
+                "verdict": "ok",
+                "type": "int",
+                "canonical_base64": "MQ==",
+                "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+            },
+            {
+                "name": "top-level-string",
+                "input_base64": "Ingi",
+                "note": "a top-level string decodes",
+                "verdict": "ok",
+                "type": "string",
+                "canonical_base64": "Ingi",
+                "sha256": "ba2df4903a2c14e86dc3bcca58911b44ac1d2514b7227bf6eb08cfb978f55a1b"
+            },
+            {
+                "name": "top-level-null",
+                "input_base64": "bnVsbA==",
+                "note": "a top-level null decodes",
+                "verdict": "ok",
+                "type": "null",
+                "canonical_base64": "bnVsbA==",
+                "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+                "name": "empty-input",
+                "input_base64": "",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "whitespace-only",
+                "input_base64": "ICA=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "numeric-keys",
+                "input_base64": "eyIxIjoxLCIwIjoyfQ==",
+                "note": "numeric keys stay strings and sort as strings",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyIwIjoyLCIxIjoxfQ==",
+                "sha256": "e5492e27383c6640cb633db239b2e20d481388f9494b4b59933a81df02a9ca79"
+            },
+            {
+                "name": "negative-numeric-key",
+                "input_base64": "eyItNSI6MX0=",
+                "note": "a negative numeric key",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyItNSI6MX0=",
+                "sha256": "01df433d5bae8b5e1ce683ebbd9885d8b53ef33409b781e0a077baec36d9b969"
+            },
+            {
+                "name": "capitalised-true",
+                "input_base64": "eyJhIjpUcnVlfQ==",
+                "note": "literals are case-sensitive",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "nan",
+                "input_base64": "eyJhIjpOYU59",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "infinity",
+                "input_base64": "eyJhIjpJbmZpbml0eX0=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "trailing-comma-object",
+                "input_base64": "eyJhIjoxLH0=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "trailing-comma-array",
+                "input_base64": "WzEsXQ==",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "single-quotes",
+                "input_base64": "eydhJzoxfQ==",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "comment",
+                "input_base64": "eyJhIjoxfS8veA==",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "unquoted-key",
+                "input_base64": "e2E6MX0=",
+                "note": "invalid",
+                "verdict": "invalid",
+                "php_error": "Syntax error"
+            },
+            {
+                "name": "empty-object",
+                "input_base64": "e30=",
+                "note": "canonical {}",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "e30=",
+                "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            },
+            {
+                "name": "empty-array",
+                "input_base64": "W10=",
+                "note": "canonical []",
+                "verdict": "ok",
+                "type": "array",
+                "canonical_base64": "W10=",
+                "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+            },
+            {
+                "name": "nested-empty",
+                "input_base64": "eyJhIjp7fSwiYiI6W119",
+                "note": "nested empties",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjp7fSwiYiI6W119",
+                "sha256": "aeeba1e56a144077f89e26c930dad7cf933e9383cfb8e33ddff618233b29be76"
+            },
+            {
+                "name": "key-with-escaped-quote",
+                "input_base64": "eyJhXCJiIjoxfQ==",
+                "note": "a key holding an escaped quotation mark",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhXCJiIjoxfQ==",
+                "sha256": "bf7eee3c228f8b7fdfc1e47adab6d55a4f5d190e983dce87207152e5bf5e9667"
+            },
+            {
+                "name": "astral-and-bmp-keys",
+                "input_base64": "eyLwn5iAIjoxLCLigqwiOjIsIu+sgSI6M30=",
+                "note": "keys sort by UTF-16 code units: the euro sign, then the astral emoji (a surrogate pair), then the ligature",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyLigqwiOjIsIvCfmIAiOjEsIu+sgSI6M30=",
+                "sha256": "635ca802226dc3c67d5cfeb2aa087bc40b63a06c8c362b165ebe458ad4316480"
+            },
+            {
+                "name": "utf16-order-sample",
+                "input_base64": "eyJcdWQ4MDBcdWRjMDAiOjEsIlx1ZmZmZiI6MiwieiI6NCwiWiI6NSwiIjo2LCJhIjo3LCJhYSI6OCwiYWIiOjksIlx1MDBlOSI6MTAsIlx1ZTAwMCI6MTEsIlx1ZGJmZlx1ZGZmZiI6MTJ9",
+                "note": "the empty key first, then ASCII, then U+00E9, then the astral code points (their surrogates sort below U+E000 and U+FFFF)",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyIiOjYsIloiOjUsImEiOjcsImFhIjo4LCJhYiI6OSwieiI6NCwiw6kiOjEwLCLwkICAIjoxLCL0j7+/IjoxMiwi7oCAIjoxMSwi77+/IjoyfQ==",
+                "sha256": "34ee7e389e901281a28679ad44c1422697dece6f19734075eab0eb64bbb38b55"
+            },
+            {
+                "name": "bool-and-null-values",
+                "input_base64": "eyJhIjp0cnVlLCJiIjpmYWxzZSwiYyI6bnVsbH0=",
+                "note": "scalars canonicalise as their literals",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjp0cnVlLCJiIjpmYWxzZSwiYyI6bnVsbH0=",
+                "sha256": "58ea9f23c715c4f8fee078efd41139485403f053775482d58b6f4f454b34ecf0"
+            },
+            {
+                "name": "solidus-in-string",
+                "input_base64": "eyJhIjoiYS9iIn0=",
+                "note": "a solidus is not escaped",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoiYS9iIn0=",
+                "sha256": "6af97e068868f1784ed86718bb0fe550e9454dee6b0493ac5f49700b0a13fc50"
+            },
+            {
+                "name": "raw-unicode",
+                "input_base64": "eyJhIjoiw6nwn5iAIn0=",
+                "note": "non-ASCII is copied as it is",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_base64": "eyJhIjoiw6nwn5iAIn0=",
+                "sha256": "b0699189cec62a436823aaea2adabe24b05b6a8a47f99ff48a50e549ae8b2043"
+            },
+            {
+                "name": "float-nested",
+                "input_base64": "eyJhIjp7ImIiOjEuNX19",
+                "note": "a float anywhere in the structure cannot be canonicalised",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "non-integer numbers cannot be canonicalised"
+            },
+            {
+                "name": "int64-nested",
+                "input_base64": "eyJhIjp7ImIiOjkyMjMzNzIwMzY4NTQ3NzU4MDd9fQ==",
+                "note": "an integer beyond 2^53-1 anywhere cannot be canonicalised",
+                "verdict": "ok",
+                "type": "object",
+                "canonical_error": "integer outside the exactly representable range"
+            }
+        ]
+    },
+    "php_behaviour": {
+        "note": "PHP runtime behaviours verify.php depends on, observed under PHP 8.4.25, that an implementation in another language must reproduce.",
+        "base64_strict": [
+            {
+                "input": "YQ",
+                "output_hex": "61"
+            },
+            {
+                "input": "YQ=",
+                "output_hex": null
+            },
+            {
+                "input": "YQ==",
+                "output_hex": "61"
+            },
+            {
+                "input": "YQ===",
+                "output_hex": null
+            },
+            {
+                "input": "Y",
+                "output_hex": null
+            },
+            {
+                "input": "YQ==YQ==",
+                "output_hex": null
+            },
+            {
+                "input": "YW Jj",
+                "output_hex": "616263"
+            },
+            {
+                "input": "YW\nJj",
+                "output_hex": "616263"
+            },
+            {
+                "input": "YW*Jj",
+                "output_hex": null
+            },
+            {
+                "input": "",
+                "output_hex": ""
+            },
+            {
+                "input": "====",
+                "output_hex": null
+            },
+            {
+                "input": "YWJjZA",
+                "output_hex": "61626364"
+            },
+            {
+                "input": "YWJjZ",
+                "output_hex": null
+            },
+            {
+                "input": "YWJjZQ",
+                "output_hex": "61626365"
+            }
+        ],
+        "int_cast_of_string": [
+            {
+                "input": "1e3",
+                "output": 1000
+            },
+            {
+                "input": "1.9",
+                "output": 1
+            },
+            {
+                "input": "-1.9",
+                "output": -1
+            },
+            {
+                "input": " 12",
+                "output": 12
+            },
+            {
+                "input": "12abc",
+                "output": 12
+            },
+            {
+                "input": "abc",
+                "output": 0
+            },
+            {
+                "input": "0x1A",
+                "output": 0
+            },
+            {
+                "input": "+5",
+                "output": 5
+            },
+            {
+                "input": "1e400",
+                "output": 0
+            },
+            {
+                "input": "9223372036854775808",
+                "output": 9223372036854775807
+            },
+            {
+                "input": "1e19",
+                "output": 9223372036854775807
+            },
+            {
+                "input": "007",
+                "output": 7
+            },
+            {
+                "input": "1_000",
+                "output": 1
+            },
+            {
+                "input": " 1 2",
+                "output": 1
+            }
+        ],
+        "int_cast_of_float": [
+            {
+                "input": "1e30",
+                "output": 5076964154930102272
+            },
+            {
+                "input": "-1e30",
+                "output": -5076964154930102272
+            },
+            {
+                "input": "NaN",
+                "output": 0
+            },
+            {
+                "input": "Infinity",
+                "output": 0
+            },
+            {
+                "input": "1.9",
+                "output": 1
+            },
+            {
+                "input": "9.3e18",
+                "output": -9146744073709551616
+            },
+            {
+                "input": "1.8446744073709552e19",
+                "output": 0
+            },
+            {
+                "input": "9.223372036854775808e18",
+                "output": -9223372036854775808
+            },
+            {
+                "input": "-0.5",
+                "output": 0
+            }
+        ],
+        "rfc3339_accept": {
+            "2026-01-02T03:04:05Z": 1767323045,
+            "2026-01-02T03:04:05.123456Z": 1767323045,
+            "2026-00-01T00:00:00Z": 1764547200,
+            "2026-02-30T00:00:00Z": 1772409600,
+            "2026-01-00T00:00:00Z": 1767139200,
+            "2026-01-01T24:00:00Z": 1767312000,
+            "2026-01-01T23:59:60Z": 1767312000,
+            "2026-01-01T00:00:00+01:00": 1767222000,
+            "2026-01-01T00:00:00+24:59": 1767135660,
+            "2026-01-01T00:00:00-24:00": 1767312000,
+            "0000-01-01T00:00:00Z": -62167219200,
+            "9999-12-31T23:59:59Z": 253402300799,
+            "2026-01-02T03:04:05Z\n": 1767323045
+        },
+        "rfc3339_reject": [
+            "2026-01-02T03:04:05.1234567Z",
+            "2026-13-01T00:00:00Z",
+            "2026-01-32T00:00:00Z",
+            "2026-01-01T25:00:00Z",
+            "2026-01-01T23:60:00Z",
+            "2026-01-01T23:59:61Z",
+            "2026-01-01T00:00:00+25:00",
+            "2026-01-01T00:00:00+01:60",
+            "2026-01-01t00:00:00Z",
+            "2026-01-01T00:00:00z",
+            "2026-01-02T03:04:05Z\n\n",
+            "2026-01-02T03:04:05Z\r\n",
+            "2026-01-02T03:04:05Z "
+        ],
+        "generalized_time_accept": {
+            "20260102030405Z": 1767323045,
+            "20260102030405.5Z": 1767323045,
+            "20261301000000Z": 1798761600,
+            "20260230000000Z": 1772409600,
+            "20260101235960Z": 1767312000,
+            "00000101000000Z": 946684800,
+            "20260000000000Z": 1764460800,
+            "20260102030405Z\n": 1767323045
+        },
+        "generalized_time_reject": [
+            "20260102030405.1234567Z",
+            "2026010203Z",
+            "20260102030405+0100",
+            "20260102030405Z\n\n"
+        ],
+        "utc_time_accept": {
+            "260102030405Z": 1767323045,
+            "500102030405Z": -631054555,
+            "490102030405Z": 2493169445
+        },
+        "utc_time_reject": [
+            "2601020304Z",
+            "260102030405+0100"
+        ],
+        "strtolower_is_ascii_only": {
+            "input": "ABCÉ",
+            "output": "abcÉ"
+        },
+        "key_fingerprint": [
+            {
+                "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+                "fingerprint": "21fe31dfa154a261"
+            },
+            {
+                "public_key": "",
+                "fingerprint": "e3b0c44298fc1c14"
+            },
+            {
+                "public_key": "abc",
+                "fingerprint": "unreadable"
+            },
+            {
+                "public_key": "zz",
+                "fingerprint": "unreadable"
+            }
+        ]
+    }
+}

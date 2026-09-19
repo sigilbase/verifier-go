@@ -1,0 +1,220 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/sigilbase/verifier/result.schema.json",
+    "title": "Sigilbase evidence verifier --json document",
+    "description": "The document verify.php and sigilbase-verify write on stdout under --json. Both implementations produce the same document for the same input apart from the three implementation identity fields (verifier_name, verifier_version, verifier_sha256) and the free text of failures, notes and message. A run that stopped before a verdict (a missing required file, an unknown format, a usage error) writes the error document; every other run writes the verdict document.",
+    "oneOf": [
+        { "$ref": "#/$defs/verdictDocument" },
+        { "$ref": "#/$defs/errorDocument" }
+    ],
+    "$defs": {
+        "hex64": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+        },
+        "resultState": {
+            "description": "pass: the checks held. fail: at least one check failed. unconfirmed: the mathematics held but something outside the bundle (a trusted key, a trust root) was missing. not_checked: nothing of the kind was present to check, which is not the same as checked and sound.",
+            "type": "string",
+            "enum": ["pass", "fail", "unconfirmed", "not_checked"]
+        },
+        "results": {
+            "description": "The five results, each demoted only ever downwards: pass, then not_checked, then unconfirmed, then fail.",
+            "type": "object",
+            "properties": {
+                "content_integrity": { "$ref": "#/$defs/resultState" },
+                "signing_identity": { "$ref": "#/$defs/resultState" },
+                "timestamps": { "$ref": "#/$defs/resultState" },
+                "scope": { "$ref": "#/$defs/resultState" },
+                "redactions": { "$ref": "#/$defs/resultState" }
+            },
+            "required": ["content_integrity", "signing_identity", "timestamps", "scope", "redactions"],
+            "additionalProperties": false
+        },
+        "signingKeys": {
+            "description": "Every signing key that sealed a checkpoint, by fingerprint (the first 16 hex characters of the SHA-256 of the raw public key, or the word unreadable when the bundle's hex did not decode), with where trust in it came from: the built-in trusted set, the --keys file named on the command line, or bundle only. An empty set is written as an empty JSON array, which is how PHP encodes an empty array.",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "patternProperties": {
+                        "^([0-9a-f]{16}|unreadable)$": { "type": "string" }
+                    },
+                    "additionalProperties": false,
+                    "minProperties": 1
+                },
+                {
+                    "type": "array",
+                    "maxItems": 0
+                }
+            ]
+        },
+        "range": {
+            "type": "object",
+            "properties": {
+                "from": { "type": "integer" },
+                "to": { "type": "integer" }
+            },
+            "required": ["from", "to"],
+            "additionalProperties": false
+        },
+        "treeState": {
+            "description": "A cumulative RFC 6962 tree state: the number of entries and the root over them.",
+            "type": "object",
+            "properties": {
+                "tree_size": { "type": "integer" },
+                "root": { "type": "string" }
+            },
+            "required": ["tree_size", "root"],
+            "additionalProperties": false
+        },
+        "bundleSummary": {
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "The bundle argument exactly as given on the command line." },
+                "stream": { "type": "string" },
+                "range": { "$ref": "#/$defs/range" }
+            },
+            "required": ["path", "stream", "range"],
+            "additionalProperties": false
+        },
+        "verifiedBundle": {
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "stream": { "type": "string" },
+                "range": { "$ref": "#/$defs/range" },
+                "events": { "type": "integer", "description": "Event lines that parsed as JSON objects." },
+                "checkpoints": { "type": "integer" },
+                "redacted_events": { "type": "integer" }
+            },
+            "required": ["path", "stream", "range", "events", "checkpoints", "redacted_events"],
+            "additionalProperties": false
+        },
+        "bundleHashes": {
+            "description": "Present only under --print-hashes: the SHA-256 of each bundle file argument, or null for a directory or a path that could not be read. PHP encodes an empty map as an empty array; the map is never empty in practice.",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": { "type": ["string", "null"] }
+                },
+                { "type": "array", "maxItems": 0 }
+            ]
+        },
+        "identity": {
+            "verifier_name": { "type": "string", "description": "verify.php or sigilbase-verify." },
+            "verifier_version": { "type": "string", "description": "The release version, shared by both implementations of a release." },
+            "verifier_sha256": { "type": "string", "description": "The SHA-256 of the file that ran: verify.php itself, or the sigilbase-verify binary (the word unavailable when the binary could not be read back)." }
+        },
+        "verdictDocument": {
+            "type": "object",
+            "properties": {
+                "verifier_name": { "$ref": "#/$defs/identity/verifier_name" },
+                "verifier_version": { "$ref": "#/$defs/identity/verifier_version" },
+                "verifier_sha256": { "$ref": "#/$defs/identity/verifier_sha256" },
+                "result": {
+                    "type": "string",
+                    "enum": ["pass", "fail", "unconfirmed"],
+                    "description": "The exit code in words: pass is 0, fail is 1, unconfirmed is 3."
+                },
+                "exit_code": { "type": "integer", "enum": [0, 1, 3] },
+                "results": { "$ref": "#/$defs/results" },
+                "signing_keys": { "$ref": "#/$defs/signingKeys" },
+                "mode": {
+                    "type": "string",
+                    "enum": ["verify", "consistency-bundles", "consistency-recorded-root"]
+                },
+                "bundle": {},
+                "consistency_state": {},
+                "bundles": {},
+                "consistency": {},
+                "recorded": {},
+                "failures": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Every failed check, in the order found. Free text; the two implementations word these differently."
+                },
+                "notes": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Every unconfirmed check and every informational note, in order. Free text."
+                },
+                "bundle_sha256": { "$ref": "#/$defs/bundleHashes" }
+            },
+            "required": ["verifier_name", "verifier_version", "verifier_sha256", "result", "exit_code", "results", "signing_keys", "mode", "failures", "notes"],
+            "additionalProperties": false,
+            "allOf": [
+                {
+                    "if": { "properties": { "mode": { "const": "verify" } } },
+                    "then": {
+                        "properties": {
+                            "bundle": { "$ref": "#/$defs/verifiedBundle" },
+                            "consistency_state": {
+                                "description": "The cumulative tree state at the end of the range when the bundle starts at sequence 1 and did not fail; a later export can prove it extends this one.",
+                                "oneOf": [{ "$ref": "#/$defs/treeState" }, { "type": "null" }]
+                            }
+                        },
+                        "required": ["bundle", "consistency_state"],
+                        "not": { "anyOf": [{ "required": ["bundles"] }, { "required": ["consistency"] }, { "required": ["recorded"] }] }
+                    }
+                },
+                {
+                    "if": { "properties": { "mode": { "const": "consistency-bundles" } } },
+                    "then": {
+                        "properties": {
+                            "bundles": {
+                                "type": "array",
+                                "items": { "$ref": "#/$defs/bundleSummary" },
+                                "minItems": 2,
+                                "maxItems": 2
+                            },
+                            "consistency": {
+                                "description": "The proof summary when consistency held; null when it did not or could not be checked.",
+                                "oneOf": [
+                                    {
+                                        "type": "object",
+                                        "properties": {
+                                            "old": { "$ref": "#/$defs/treeState" },
+                                            "new": { "$ref": "#/$defs/treeState" },
+                                            "proof_nodes": { "type": "integer" }
+                                        },
+                                        "required": ["old", "new", "proof_nodes"],
+                                        "additionalProperties": false
+                                    },
+                                    { "type": "null" }
+                                ]
+                            }
+                        },
+                        "required": ["bundles", "consistency"],
+                        "not": { "anyOf": [{ "required": ["bundle"] }, { "required": ["consistency_state"] }, { "required": ["recorded"] }] }
+                    }
+                },
+                {
+                    "if": { "properties": { "mode": { "const": "consistency-recorded-root" } } },
+                    "then": {
+                        "properties": {
+                            "bundle": { "$ref": "#/$defs/bundleSummary" },
+                            "recorded": {
+                                "description": "The recorded state as given on the command line: the root lowercased, the size after PHP's integer cast of the argument.",
+                                "$ref": "#/$defs/treeState"
+                            }
+                        },
+                        "required": ["bundle", "recorded"],
+                        "not": { "anyOf": [{ "required": ["bundles"] }, { "required": ["consistency"] }, { "required": ["consistency_state"] }] }
+                    }
+                }
+            ]
+        },
+        "errorDocument": {
+            "description": "Nothing was verified, or the bundle cannot pass because a required piece is missing. exit_code 2 is a usage or format error; exit_code 1 is a bundle with required files missing or unreadable, which must never pass.",
+            "type": "object",
+            "properties": {
+                "verifier_name": { "$ref": "#/$defs/identity/verifier_name" },
+                "verifier_version": { "$ref": "#/$defs/identity/verifier_version" },
+                "result": { "type": "string", "const": "error" },
+                "exit_code": { "type": "integer", "enum": [1, 2] },
+                "message": { "type": "string", "description": "Free text naming what stopped the run." }
+            },
+            "required": ["verifier_name", "verifier_version", "result", "exit_code", "message"],
+            "additionalProperties": false
+        }
+    }
+}
