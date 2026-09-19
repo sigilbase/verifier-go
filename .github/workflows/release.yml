@@ -1,0 +1,132 @@
+name: release
+
+# Every version tag gets a build: the suite must pass and the differential
+# job must find sigilbase-verify in agreement with the reference verify.php,
+# and only then is a GitHub Release published carrying the binaries for
+# every platform, result.schema.json, SHA256SUMS over all of them, and a
+# build provenance attestation for the binaries. The notes are the
+# annotated tag's message.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    name: Test Go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: |
+          if grep -q '^require' go.mod; then echo "go.mod has a require block"; exit 1; fi
+          if [ -s go.sum ]; then echo "go.sum is not empty"; exit 1; fi
+
+      - run: go vet ./...
+
+      - run: go test -race ./...
+
+      - run: go run ./tools/hostile && git diff --exit-code -- corpus/hostile
+
+  differential:
+    runs-on: ubuntu-latest
+    name: Differential gate
+    needs: [go]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sodium, zip, openssl
+          coverage: none
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: go build -o sigilbase-verify ./cmd/sigilbase-verify
+
+      - run: go run ./tools/differential -php php -go ./sigilbase-verify
+
+      - run: go run ./tools/mutate -php php -go ./sigilbase-verify -budget 1000 -seed 1 -disagreements disagreements
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-disagreements
+          path: disagreements
+          if-no-files-found: ignore
+
+  build:
+    runs-on: ubuntu-latest
+    name: Build binaries twice
+    needs: [differential]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: a
+
+      - uses: actions/checkout@v4
+        with:
+          path: b
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: a/go.mod
+
+      # The version is the tag without its leading v; the reference
+      # verify.php must carry the same version, since the two release together.
+      - id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if ! grep -q "const VERIFIER_VERSION = '$version';" a/reference/verify.php; then
+            echo "reference/verify.php's VERIFIER_VERSION is not $version"; exit 1
+          fi
+
+      - run: cd a && sh tools/build-release.sh "${{ steps.version.outputs.version }}" dist
+      - run: cd b && sh tools/build-release.sh "${{ steps.version.outputs.version }}" dist
+
+      - run: diff a/dist/SHA256SUMS b/dist/SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: a/dist
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      # The tag object itself, not only the commit it points at: the notes
+      # are the annotated tag's message, and a shallow checkout of a single
+      # ref does not carry it.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/sigilbase-verify_*
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes-from-tag

@@ -1,0 +1,68 @@
+name: nightly
+
+# The larger mutation budget and longer fuzz runs that CI cannot afford on
+# every push. A disagreement here is as critical as one in CI: the kept
+# mutant becomes a permanent fixture.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    name: Mutation differential (large budget)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sodium, zip, openssl
+          coverage: none
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: go build -o sigilbase-verify ./cmd/sigilbase-verify
+
+      # A different seed every night, so the budget explores new mutants;
+      # the seed is in the log, so any finding can be replayed exactly.
+      - run: |
+          seed=$(date +%Y%m%d)
+          echo "seed $seed"
+          go run ./tools/mutate -php php -go ./sigilbase-verify -budget 5000 -seed "$seed" -disagreements disagreements
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-disagreements
+          path: disagreements
+          if-no-files-found: ignore
+
+  fuzz:
+    runs-on: ubuntu-latest
+    name: Fuzz (long)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: |
+          go test ./internal/cjson -run '^$' -fuzz=FuzzParse -fuzztime=15m
+          go test ./internal/tst -run '^$' -fuzz=FuzzParseToken -fuzztime=15m
+          go test ./internal/tst -run '^$' -fuzz=FuzzRead -fuzztime=5m
+          go test ./internal/bundle -run '^$' -fuzz=FuzzZip -fuzztime=15m
+          go test ./internal/bundle -run '^$' -fuzz=FuzzLines -fuzztime=5m
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings
+          path: |
+            internal/cjson/testdata/fuzz
+            internal/tst/testdata/fuzz
+            internal/bundle/testdata/fuzz

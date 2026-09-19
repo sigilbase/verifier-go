@@ -1,0 +1,124 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    name: Go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Standard library only: no require block, no go.sum.
+      - run: |
+          if grep -q '^require' go.mod; then echo "go.mod has a require block"; exit 1; fi
+          if [ -s go.sum ]; then echo "go.sum is not empty"; exit 1; fi
+
+      - run: test -z "$(gofmt -l .)"
+
+      - run: go vet ./...
+
+      - run: go test -race ./...
+
+      # The committed hostile fixtures must be what the generator produces.
+      - run: go run ./tools/hostile && git diff --exit-code -- corpus/hostile
+
+      # A short fuzz budget per target; the seed corpora are committed.
+      - run: |
+          go test ./internal/cjson -run '^$' -fuzz=FuzzParse -fuzztime=60s
+          go test ./internal/tst -run '^$' -fuzz=FuzzParseToken -fuzztime=60s
+          go test ./internal/tst -run '^$' -fuzz=FuzzRead -fuzztime=30s
+          go test ./internal/bundle -run '^$' -fuzz=FuzzZip -fuzztime=60s
+          go test ./internal/bundle -run '^$' -fuzz=FuzzLines -fuzztime=30s
+
+  differential:
+    runs-on: ubuntu-latest
+    name: Differential (reference/verify.php vs sigilbase-verify)
+    needs: [go]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sodium, zip, openssl
+          coverage: none
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: go build -o sigilbase-verify ./cmd/sigilbase-verify
+
+      # Every corpus fixture through both verifiers, in both consistency
+      # forms: any difference in exit code, results or document fails.
+      - run: go run ./tools/differential -php php -go ./sigilbase-verify
+
+      # A fixed budget of seeded mutants through both; the nightly job runs
+      # a larger one. A disagreement is kept as a bundle for the fixture set.
+      - run: go run ./tools/mutate -php php -go ./sigilbase-verify -budget 300 -seed 1 -disagreements disagreements
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-disagreements
+          path: disagreements
+          if-no-files-found: ignore
+
+  memory:
+    runs-on: ubuntu-latest
+    name: Memory ceiling (1,000,000 events under 128 MiB)
+    needs: [go]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sodium, zip, openssl
+          coverage: none
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: go build -o sigilbase-verify ./cmd/sigilbase-verify
+
+      - run: php -d memory_limit=1G tools/build-large-bundle.php 1000000 1000 large.zip
+
+      - run: |
+          /usr/bin/time -v ./sigilbase-verify --quiet --keys large.zip.keys.json large.zip 2> time.txt; status=$?
+          cat time.txt
+          if [ "$status" -ne 0 ]; then echo "verification exited $status"; exit 1; fi
+          peak_kib=$(awk '/Maximum resident set size/ {print $NF}' time.txt)
+          echo "peak resident set: $peak_kib KiB"
+          if [ "$peak_kib" -gt 131072 ]; then echo "over the 128 MiB ceiling"; exit 1; fi
+
+  reproducible:
+    runs-on: ubuntu-latest
+    name: Reproducible build
+    needs: [go]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: a
+
+      - uses: actions/checkout@v4
+        with:
+          path: b
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: a/go.mod
+
+      - run: cd a && sh tools/build-release.sh 0.0.0-ci dist
+      - run: cd b && sh tools/build-release.sh 0.0.0-ci dist
+
+      # Two clean checkouts, one toolchain, identical bytes for every target.
+      - run: diff a/dist/SHA256SUMS b/dist/SHA256SUMS
