@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"action\":\"user.login\",\"actor\":\"user:2\",\"entry_hash\":\"a33eed80a1c6153ef85ec8f142cbb345f6016b33bc573d6e035cc9be711d7c35\",\"occurred_at\":\"2026-01-02T03:04:05.000000Z\",\"payload\":{\"n\":1},\"payload_hash\":\"2bfd14f43d17fc7cea24e0917a8879b4b2f880b8baeec1b9d90fbaad655e71bd\",\"payload_state\":\"present\",\"prev_hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"received_at\":\"2026-01-02T03:04:05.000000Z\",\"resource\":null,\"seq\":1,\"v\":1}")

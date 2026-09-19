@@ -1,0 +1,6 @@
+# Byte-stable checkouts everywhere: the trust material is hash-compared
+# between implementations and the fixtures are compared byte for byte, so
+# line endings must never vary by platform.
+* text=auto eol=lf
+*.zip binary
+*.der binary
