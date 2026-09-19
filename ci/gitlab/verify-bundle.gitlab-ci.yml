@@ -1,0 +1,48 @@
+# Verify a Sigilbase evidence bundle in GitLab CI.
+#
+# Include this template and set the variables. The job downloads one pinned
+# release binary of sigilbase-verify, checks it against the sha256 you give
+# (from SHA256SUMS on the release page, confirmed out of band), runs it over
+# the bundle path, and fails on any exit code other than 0. UNCONFIRMED
+# (exit 3) fails by default; set SIGILBASE_ALLOW_UNCONFIRMED to "true" for a
+# private deployment whose signing key is not in the built-in set, or pass
+# your own keys with SIGILBASE_VERIFY_ARGS. The only network call is the
+# download of the pinned release.
+#
+#   include:
+#     - remote: https://raw.githubusercontent.com/sigilbase/verifier-go/v1.6.0/ci/gitlab/verify-bundle.gitlab-ci.yml
+#
+#   verify evidence:
+#     extends: .sigilbase-verify-bundle
+#     variables:
+#       SIGILBASE_VERIFIER_VERSION: "1.6.0"
+#       SIGILBASE_VERIFIER_SHA256: "<sha256 of sigilbase-verify_1.6.0_linux_amd64 from SHA256SUMS>"
+#       SIGILBASE_BUNDLE: "evidence/export.zip"
+
+.sigilbase-verify-bundle:
+  image: alpine:3.20
+  variables:
+    SIGILBASE_VERIFIER_VERSION: ""
+    SIGILBASE_VERIFIER_SHA256: ""
+    SIGILBASE_BUNDLE: ""
+    SIGILBASE_VERIFY_ARGS: ""
+    SIGILBASE_ALLOW_UNCONFIRMED: "false"
+    SIGILBASE_RELEASE_BASE: "https://github.com/sigilbase/verifier-go/releases/download"
+  script:
+    - test -n "$SIGILBASE_VERIFIER_VERSION" || { echo "SIGILBASE_VERIFIER_VERSION is required"; exit 2; }
+    - test -n "$SIGILBASE_VERIFIER_SHA256" || { echo "SIGILBASE_VERIFIER_SHA256 is required"; exit 2; }
+    - test -n "$SIGILBASE_BUNDLE" || { echo "SIGILBASE_BUNDLE is required"; exit 2; }
+    - name="sigilbase-verify_${SIGILBASE_VERIFIER_VERSION}_linux_amd64"
+    - wget -q -O sigilbase-verify "${SIGILBASE_RELEASE_BASE}/v${SIGILBASE_VERIFIER_VERSION}/${name}"
+    - echo "${SIGILBASE_VERIFIER_SHA256}  sigilbase-verify" | sha256sum -c -
+    - chmod +x sigilbase-verify
+    - |
+      set +e
+      ./sigilbase-verify $SIGILBASE_VERIFY_ARGS "$SIGILBASE_BUNDLE"
+      status=$?
+      set -e
+      case "$status" in
+        0) echo "PASS";;
+        3) if [ "$SIGILBASE_ALLOW_UNCONFIRMED" = "true" ]; then echo "UNCONFIRMED, allowed by SIGILBASE_ALLOW_UNCONFIRMED"; else echo "UNCONFIRMED: the maths holds but the origin is not established"; exit 3; fi;;
+        *) exit "$status";;
+      esac

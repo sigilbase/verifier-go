@@ -1,0 +1,62 @@
+# Verify a Sigilbase evidence bundle in GitHub Actions.
+#
+# This action is published from its own repository (sigilbase/verify-bundle-action);
+# the copy here is its source of truth until that repository exists. It
+# downloads one pinned release binary of sigilbase-verify, checks it against
+# the sha256 you give (from SHA256SUMS on the release page, confirmed out of
+# band), runs it over the bundle path, and fails on any exit code other
+# than 0. UNCONFIRMED (exit 3) fails by default; set allow-unconfirmed for a
+# private deployment, or pass your own keys through extra-args. The only
+# network call is the download of the pinned release.
+#
+#   - uses: sigilbase/verify-bundle-action@v1
+#     with:
+#       version: "1.6.0"
+#       sha256: "<sha256 of sigilbase-verify_1.6.0_linux_amd64 from SHA256SUMS>"
+#       bundle: evidence/export.zip
+
+name: Verify Sigilbase evidence bundle
+description: Verify an evidence bundle with a pinned, hash-checked release of sigilbase-verify
+inputs:
+  version:
+    description: The sigilbase-verify release to run, without the leading v
+    required: true
+  sha256:
+    description: The SHA-256 of the linux_amd64 binary of that release, from SHA256SUMS
+    required: true
+  bundle:
+    description: Path to the bundle (zip archive or extracted directory)
+    required: true
+  extra-args:
+    description: Extra arguments for the verifier, for example --keys my-keys.json
+    required: false
+    default: ""
+  allow-unconfirmed:
+    description: Treat UNCONFIRMED (exit 3) as success, for private deployments
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        SHA256: ${{ inputs.sha256 }}
+        BUNDLE: ${{ inputs.bundle }}
+        EXTRA_ARGS: ${{ inputs.extra-args }}
+        ALLOW_UNCONFIRMED: ${{ inputs.allow-unconfirmed }}
+      run: |
+        set -eu
+        name="sigilbase-verify_${VERSION}_linux_amd64"
+        curl -sSfL -o sigilbase-verify "https://github.com/sigilbase/verifier-go/releases/download/v${VERSION}/${name}"
+        echo "${SHA256}  sigilbase-verify" | sha256sum -c -
+        chmod +x sigilbase-verify
+        set +e
+        ./sigilbase-verify $EXTRA_ARGS "$BUNDLE"
+        status=$?
+        set -e
+        case "$status" in
+          0) echo "PASS";;
+          3) if [ "$ALLOW_UNCONFIRMED" = "true" ]; then echo "UNCONFIRMED, allowed by allow-unconfirmed"; else echo "UNCONFIRMED: the maths holds but the origin is not established"; exit 3; fi;;
+          *) exit "$status";;
+        esac
