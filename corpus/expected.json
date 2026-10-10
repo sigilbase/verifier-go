@@ -1,5 +1,5 @@
 {
-    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go). Fixtures named collection-* are generated in the verifier repository by tools/build-corpus-collection.php from tests/CollectionHistory.php under the same key.",
+    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go). Fixtures named collection-* are generated in the verifier repository by tools/build-corpus-collection.php from tests/CollectionHistory.php under the same key. Fixtures named shape-* are derived from valid.zip by tools/build-corpus-shape.php in the verifier repository: the same bundle in a shape the format allows but the generator never writes (an absent null field, a field the format does not name).",
     "default_options": [
         "--keys",
         "corpus/keys.json",
@@ -596,6 +596,28 @@
                 "timestamps": "not_checked",
                 "scope": "pass",
                 "redactions": "fail"
+            }
+        },
+        "shape-absent-null": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "shape-unknown-field": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
             }
         },
         "swap": {

@@ -18,6 +18,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -234,15 +235,19 @@ func removeFieldFromDocument(rng *rand.Rand, data []byte) ([]byte, bool) {
 	return out, true
 }
 
-// unverified lists, per file, the fields no hash or check covers, so a
-// mutant that changes only them may legitimately PASS: the v of an event
-// or checkpoint (both preimages fix v to 1), a checkpoint's own stream
-// field (the manifest's stream is hashed), and a declaration's slug and
-// state fields. FORMAT.md records each.
-var unverified = map[string][]string{
-	"events.ndjson":       {"v", "payload_state"},
-	"checkpoints.json":    {"v", "stream"},
-	"declarations.ndjson": {"v", "stream_slug", "payload_state", "absence"},
+// verified lists, per hashed file, the record fields whose value the
+// verdict depends on: the entry and checkpoint preimages, the recorded
+// hashes and signatures, the chain links, and the payload (compared
+// whole, because it is hashed whole). Every other field is either read
+// without affecting the verdict (the v of an event or checkpoint, both
+// preimages fix v to 1; a checkpoint's own stream field, the manifest's
+// is hashed; a declaration's slug, state and absence fields) or not read
+// at all (a field the format does not name). FORMAT.md records each. A
+// hashed file with no list here is compared field for field.
+var verified = map[string][]string{
+	"events.ndjson":       {"seq", "occurred_at", "received_at", "actor", "action", "resource", "payload", "payload_hash", "prev_hash", "entry_hash"},
+	"declarations.ndjson": {"seq", "stream", "occurred_at", "received_at", "actor", "action", "resource", "payload", "payload_hash", "prev_hash", "entry_hash"},
+	"checkpoints.json":    {"from", "to", "root", "prev_checkpoint", "created_at", "checkpoint_hash", "signature", "public_key"},
 }
 
 // isHex reports whether a string is hexadecimal of a hash-like length.
@@ -259,75 +264,128 @@ func isHex(s string) bool {
 	return true
 }
 
-func stripUnverified(v *cjson.Value, name string) {
-	if v == nil {
-		return
-	}
-	switch v.Kind {
-	case cjson.String:
-		// Hashes, signatures and keys are compared lowercased (FORMAT.md,
-		// "Field types"), so a change of case alone is not a change.
-		if isHex(v.Str) {
-			v.Str = strings.ToLower(v.Str)
-		}
-	case cjson.Object:
-		for _, k := range unverified[name] {
-			v.Obj.Delete(k)
-		}
-		for _, k := range v.Obj.Keys() {
-			child, _ := v.Obj.Get(k)
-			stripUnverified(child, name)
-		}
-	case cjson.Array:
-		for _, e := range v.Arr {
-			stripUnverified(e, name)
-		}
-	}
-}
-
-// semanticallySame reports whether a mutated hashed file still decodes to
-// the same verified values as the original: a byte flip inside JSON
-// whitespace, a field removal that only touched indentation, or a change
-// to a field no check covers, changes nothing the verdict depends on, so
-// such a mutant may legitimately PASS.
+// semanticallySame reports whether a mutated hashed file still says what
+// the original said, read the way both verifiers read it (FORMAT.md,
+// "Field types"): a field is read by name, an absent field reads as null,
+// and a field the format does not name is never read. A mutant that drops
+// a null field, drops or renames a field the verdict does not depend on,
+// or adds a field changes nothing the verdict depends on and may
+// legitimately PASS; one that drops, renames or changes a verified field
+// may not. A payload is compared whole, because it is hashed whole.
 func semanticallySame(name string, before, after []byte) bool {
 	if bytes.Equal(before, after) {
 		return true
 	}
-	canon := func(data []byte) (string, bool) {
-		if strings.HasSuffix(name, ".ndjson") {
-			var parts []string
-			for _, l := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
-				if strings.TrimSpace(l) == "" {
-					continue
-				}
-				v, err := cjson.Parse([]byte(l))
-				if err != nil {
-					return "", false
-				}
-				stripUnverified(v, name)
-				c, err := cjson.Canonical(v)
-				if err != nil {
-					return "", false
-				}
-				parts = append(parts, string(c))
+	if strings.HasSuffix(name, ".ndjson") {
+		a, okA := parseLines(before)
+		b, okB := parseLines(after)
+		if !okA || !okB || len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if !sameRecord(name, a[i], b[i]) {
+				return false
 			}
-			return strings.Join(parts, "\n"), true
 		}
-		v, err := cjson.Parse(data)
-		if err != nil {
-			return "", false
-		}
-		stripUnverified(v, name)
-		c, err := cjson.Canonical(v)
-		if err != nil {
-			return "", false
-		}
-		return string(c), true
+		return true
 	}
-	a, okA := canon(before)
-	b, okB := canon(after)
-	return okA && okB && a == b
+	a, errA := cjson.Parse(before)
+	b, errB := cjson.Parse(after)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return sameRecord(name, a, b)
+}
+
+// parseLines decodes an NDJSON file line by line, skipping blank lines as
+// the verifiers do; a line that does not parse makes the file unreadable.
+func parseLines(data []byte) ([]*cjson.Value, bool) {
+	var out []*cjson.Value
+	for _, l := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		v, err := cjson.Parse([]byte(l))
+		if err != nil {
+			return nil, false
+		}
+		out = append(out, v)
+	}
+	return out, true
+}
+
+// matters reports whether a scalar field of a record in the named file
+// can change the verdict.
+func matters(name, key string) bool {
+	list, listed := verified[name]
+	return !listed || slices.Contains(list, key)
+}
+
+// sameRecord compares two records as the verifiers read them. Every
+// verified, non-null field of before must be present in after with the
+// same value; a payload is compared whole; a nested container is
+// descended; a field after adds is ignored unless it gives a value to a
+// verified field that was null. Hashes compare lowercased (FORMAT.md,
+// "Field types").
+func sameRecord(name string, before, after *cjson.Value) bool {
+	if before == nil || after == nil || before.Kind != after.Kind {
+		return false
+	}
+	switch before.Kind {
+	case cjson.Object:
+		for _, k := range before.Obj.Keys() {
+			bv, _ := before.Obj.Get(k)
+			if bv.IsNull() {
+				continue
+			}
+			av, ok := after.Obj.Get(k)
+			switch {
+			case k == "payload":
+				if !ok || !exact(bv, av) {
+					return false
+				}
+			case bv.Kind == cjson.Object || bv.Kind == cjson.Array:
+				if !ok || !sameRecord(name, bv, av) {
+					return false
+				}
+			case matters(name, k):
+				if !ok || !sameRecord(name, bv, av) {
+					return false
+				}
+			}
+		}
+		for _, k := range after.Obj.Keys() {
+			av, _ := after.Obj.Get(k)
+			if bv, had := before.Obj.Get(k); had && bv.IsNull() && !av.IsNull() && matters(name, k) {
+				return false
+			}
+		}
+		return true
+	case cjson.Array:
+		if len(before.Arr) != len(after.Arr) {
+			return false
+		}
+		for i := range before.Arr {
+			if !sameRecord(name, before.Arr[i], after.Arr[i]) {
+				return false
+			}
+		}
+		return true
+	case cjson.String:
+		if isHex(before.Str) && isHex(after.Str) {
+			return strings.EqualFold(before.Str, after.Str)
+		}
+		return before.Str == after.Str
+	default:
+		return exact(before, after)
+	}
+}
+
+// exact reports whether two values have the same canonical form.
+func exact(a, b *cjson.Value) bool {
+	ca, errA := cjson.Canonical(a)
+	cb, errB := cjson.Canonical(b)
+	return errA == nil && errB == nil && bytes.Equal(ca, cb)
 }
 
 func main() {
