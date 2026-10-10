@@ -115,6 +115,9 @@ type BundleInfo struct {
 	Events         int64
 	Checkpoints    int64
 	RedactedEvents int64
+	// Collection is the format 1.6 collection-records summary for the
+	// human report; it is not part of the JSON document.
+	Collection *CollectionSummary
 	// full says whether the events, checkpoints and redacted_events
 	// fields are written (they are in verify mode only).
 	full bool

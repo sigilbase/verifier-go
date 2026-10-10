@@ -74,6 +74,7 @@ func Bundle(path string, opts Options) *Report {
 		Events:         result.eventCount,
 		Checkpoints:    result.checkpointCount,
 		RedactedEvents: result.redactedCount,
+		Collection:     result.collection,
 		full:           true,
 	}
 	rep.ConsistencyState = state

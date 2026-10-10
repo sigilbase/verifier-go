@@ -22,6 +22,7 @@ var knownFormats = []string{
 	"sigilbase-evidence/1.3",
 	"sigilbase-evidence/1.4",
 	"sigilbase-evidence/1.5",
+	"sigilbase-evidence/1.6",
 }
 
 const zeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -34,6 +35,9 @@ type bundleResult struct {
 	eventCount      int64
 	checkpointCount int64
 	redactedCount   int64
+	// collection is what the format 1.6 collection check counted, nil
+	// when the bundle holds no collection record.
+	collection *CollectionSummary
 	// cumulativeRoots holds the cumulative RFC 6962 root at the tree sizes
 	// something asked about, hex, as verify.php captures them while the
 	// events stream past.
@@ -643,6 +647,17 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 		return nil, herr
 	}
 
+	// ---- collection records (format 1.6) --------------------------------------
+
+	var collection *CollectionSummary
+	if format == "sigilbase-evidence/1.6" {
+		summary, herr := r.checkCollectionRecords(b, rangeFrom)
+		if herr != nil {
+			return nil, herr
+		}
+		collection = summary
+	}
+
 	// ---- consistency.json (format 1.1, optional) -----------------------------
 
 	if herr := r.checkConsistencyFile(b, rangeFrom, rangeTo, cumulativeRootAt); herr != nil {
@@ -656,6 +671,7 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 		eventCount:      eventCount,
 		checkpointCount: int64(len(checkpoints.Arr)),
 		redactedCount:   redactedCount,
+		collection:      collection,
 		cumulativeRoots: cumulativeRootAt,
 	}
 	if collector != nil {

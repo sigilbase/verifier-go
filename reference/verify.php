@@ -122,7 +122,7 @@ declare(strict_types=1);
  * verifier/format compatibility table. This file makes no network calls
  * of any kind.
  */
-const VERIFIER_VERSION = '1.6.0';
+const VERIFIER_VERSION = '1.7.0';
 
 /**
  * How this implementation names itself in a report, beside its version and
@@ -338,6 +338,32 @@ function out(string $text): void
     if (! $quiet && ! $jsonMode) {
         fwrite(STDOUT, $text);
     }
+}
+
+/**
+ * The honesty text for a telemetry-class stream: records exported by a
+ * client (an AI coding agent, an application) over OpenTelemetry, one
+ * event each. Printed under the summary when the manifest names the
+ * class. The wording is binding and identical to the Sigilbase docs, the
+ * stream template and the bundle README; change it in all four or none.
+ */
+function telemetry_honesty_text(): string
+{
+    return implode("\n", [
+        'Telemetry stream',
+        '',
+        'What a telemetry stream proves',
+        '',
+        '- That each record was received by Sigilbase at the stated time, from a holder of the stream\'s telemetry key, and has not been modified, deleted or reordered since.',
+        '- The order in which records were received, and the order the source claimed through its own sequence numbers.',
+        '',
+        'What it does not prove',
+        '',
+        '- That the source emitted every event it could have. Telemetry is produced by a client on the user\'s machine. A client with export disabled, misconfigured or offline produces no records, and the ledger cannot see the gap. Managed settings make this harder to do by accident; they do not make it impossible.',
+        '- That the content of a record is true. Sigilbase stores what the client sent.',
+        '- The source\'s claimed time. Sigilbase vouches for receipt time only, and export is batched, so the two differ by seconds in normal operation.',
+        '',
+    ]);
 }
 
 /**
@@ -1980,7 +2006,7 @@ function check_declarations(
     // payload in one cannot be checked against anything. Saying so plainly
     // matters: the bundle is not necessarily wrong, it is unverifiable,
     // and the fix is to export it again.
-    if ($format !== 'sigilbase-evidence/1.5') {
+    if (! in_array($format, ['sigilbase-evidence/1.5', 'sigilbase-evidence/1.6'], true)) {
         report(
             "this bundle is {$format} and carries {$count} absent payload(s). Formats before "
             .'sigilbase-evidence/1.5 do not carry the declarations that destroyed them, so the absences cannot be '
@@ -2415,6 +2441,559 @@ function read_lines(string $path): Generator
     }
 }
 
+// ---------------------------------------------------------------------------
+// Collection records (format 1.6)
+// ---------------------------------------------------------------------------
+
+/**
+ * The event actions a connection's receipt stream carries (FORMAT.md,
+ * "Collection records"), and the resource prefix that marks them.
+ */
+const COLLECTION_ACTIONS = ['stream.config', 'collection.receipt', 'stream.gap', 'stream.gap_healed', 'stream.settled'];
+const COLLECTION_RESOURCE_PREFIX = 'connection-stream:';
+
+/**
+ * A bundle value as a 64-character lowercase hex digest, or null when it
+ * is not one.
+ */
+function collection_hash(mixed $value): ?string
+{
+    $text = strtolower(bundle_text($value));
+
+    return preg_match('/^[0-9a-f]{64}$/', $text) === 1 ? $text : null;
+}
+
+/**
+ * Canonical equality of two payload values (the cursors a receipt chain
+ * hands on). A value that cannot be canonicalised equals nothing.
+ */
+function collection_same(mixed $a, mixed $b): bool
+{
+    try {
+        return canonical_encode($a) === canonical_encode($b);
+    } catch (RuntimeException) {
+        return false;
+    }
+}
+
+/**
+ * The collection records of format 1.6: a second streaming pass over the
+ * events, keeping per resource only the head of its receipt chain, the
+ * gaps it declared and the days it settled, so a receipt stream with a
+ * million receipts costs what one receipt costs. Every rule is the
+ * numbered list in FORMAT.md, "Collection records"; every failure
+ * demotes content integrity. Links to records before the range are noted
+ * and never failed, because the bundle cannot show them; in a bundle
+ * that starts at sequence 1 nothing precedes the range, so there every
+ * link must resolve.
+ *
+ * @return array{streams: int, receipts: int, gaps: int, settlements: int, records: int}|null  null when the range holds no collection record
+ */
+function check_collection_records(string $dir, string $eventsPath, int $rangeFrom): ?array
+{
+    $anchored = $rangeFrom === 1;
+    $zero = str_repeat('0', 64);
+
+    // connection.json: informational, cross-checked below when it says
+    // this is a receipt stream. Read first so a malformed file is reported
+    // whatever the events hold.
+    $connection = null;
+    $connectionPath = $dir.DIRECTORY_SEPARATOR.'connection.json';
+
+    if (is_file($connectionPath)) {
+        $connection = json_decode((string) file_get_contents($connectionPath), false);
+        $role = $connection instanceof stdClass ? ($connection->role ?? null) : null;
+
+        if (! in_array($role, ['records', 'receipts'], true)) {
+            report('connection.json is present but malformed - expected an object whose role is "records" or "receipts"');
+            $connection = null;
+        } elseif ($role === 'records') {
+            $receiptStream = bundle_text($connection->receipt_stream ?? '');
+
+            note("connection.json: these records were collected through a Sigilbase connection; the receipts covering them are in stream [{$receiptStream}], exported separately. The records verify here as any events do; the receipt chain is checked in that bundle.");
+        }
+    }
+
+    /** @var array<string, array<string, mixed>> $streams  resource => chain state */
+    $streams = [];
+    $counts = ['receipts' => 0, 'gaps' => 0, 'settlements' => 0, 'records' => 0];
+    $seen = false;
+
+    foreach (read_lines($eventsPath) as $line) {
+        if (trim($line) === '') {
+            continue;
+        }
+
+        $event = json_decode($line, false);
+
+        if (! $event instanceof stdClass) {
+            continue;
+        }
+
+        $action = $event->action ?? null;
+        $resource = $event->resource ?? null;
+        $sequence = $event->seq ?? null;
+
+        if (! is_string($action) || ! in_array($action, COLLECTION_ACTIONS, true)
+            || ! is_string($resource) || ! str_starts_with($resource, COLLECTION_RESOURCE_PREFIX)
+            || ! is_int($sequence)) {
+            continue;
+        }
+
+        if (! $seen) {
+            out("Checking collection records (receipt chains, gaps, settlement)...\n");
+            $seen = true;
+        }
+
+        $key = substr($resource, strlen(COLLECTION_RESOURCE_PREFIX));
+
+        $streams[$resource] ??= [
+            'key' => $key,
+            'configs' => 0,
+            'records_stream' => null,
+            'receipts' => 0,
+            'last_hash' => null,
+            'last_index' => null,
+            'last_cursor' => null,
+            'cursor_known' => false,
+            'gaps' => [],
+            'days' => [],
+            'settlements' => 0,
+        ];
+        $state = &$streams[$resource];
+
+        $label = "sequence {$sequence} ({$action}, stream {$key})";
+        $entryHash = collection_hash($event->entry_hash ?? null) ?? '';
+        $payload = $event->payload ?? null;
+        $counts['records']++;
+
+        // Rule 6: a redacted record is noted; later records chain from its
+        // entry hash, which the chain walk above has already verified.
+        if (($event->payload_state ?? 'present') === 'redacted' || $payload === null) {
+            note("{$label}: the payload is redacted, so this record's links cannot be checked; later records chain from its entry hash");
+
+            if ($action === 'collection.receipt') {
+                $state['receipts']++;
+                $state['last_hash'] = $entryHash;
+                $state['last_index'] = null;
+                $state['cursor_known'] = false;
+                $counts['receipts']++;
+            }
+
+            unset($state);
+
+            continue;
+        }
+
+        if (! $payload instanceof stdClass) {
+            report("{$label}: the payload is not an object");
+            unset($state);
+
+            continue;
+        }
+
+        // Rule 5: nothing precedes a stream's configuration.
+        if ($anchored && $action !== 'stream.config' && $state['configs'] === 0) {
+            report("{$label}: a collection record precedes the stream's configuration (stream.config) in a bundle that starts at sequence 1");
+        }
+
+        switch ($action) {
+            case 'stream.config':
+                if (($payload->config_version ?? null) !== 1) {
+                    report("{$label}: config_version is not 1");
+                }
+
+                $recordsStream = $payload->records_stream ?? null;
+
+                if (! is_string($recordsStream) || $recordsStream === '') {
+                    report("{$label}: records_stream is missing");
+                } elseif ($state['records_stream'] !== null && $state['records_stream'] !== $recordsStream) {
+                    report("{$label}: the configuration names records stream [{$recordsStream}] but an earlier one named [{$state['records_stream']}]");
+                } else {
+                    $state['records_stream'] = $recordsStream;
+                }
+
+                $state['configs']++;
+
+                break;
+
+            case 'collection.receipt':
+                $counts['receipts']++;
+
+                if (($payload->receipt_version ?? null) !== 1) {
+                    report("{$label}: receipt_version is not 1");
+                }
+
+                $index = $payload->receipt_index ?? null;
+
+                if (! is_int($index) || $index < 1) {
+                    report("{$label}: receipt_index must be a positive integer");
+                    $index = null;
+                }
+
+                $prev = collection_hash($payload->prev_receipt_hash ?? null);
+
+                if ($prev === null) {
+                    report("{$label}: prev_receipt_hash is not a 64-character hex digest");
+                }
+
+                if (collection_hash($payload->page_hash ?? null) === null) {
+                    report("{$label}: page_hash is not a 64-character hex digest");
+                }
+
+                $recordCount = $payload->record_count ?? null;
+
+                if (! is_int($recordCount) || $recordCount < 0) {
+                    report("{$label}: record_count must be a non-negative integer");
+                    $recordCount = null;
+                }
+
+                $records = $payload->records ?? null;
+
+                if ($records === null) {
+                    if ($recordCount !== null && $recordCount !== 0) {
+                        report("{$label}: record_count is {$recordCount} but records is null");
+                    }
+                } elseif (! $records instanceof stdClass
+                    || ! is_int($records->from_sequence ?? null)
+                    || ! is_int($records->to_sequence ?? null)
+                    || $records->from_sequence > $records->to_sequence) {
+                    report("{$label}: records must be an object with from_sequence no greater than to_sequence");
+                } elseif ($recordCount !== null && $recordCount > $records->to_sequence - $records->from_sequence + 1) {
+                    report("{$label}: record_count {$recordCount} exceeds the records range");
+                }
+
+                $duplicates = $payload->duplicates_seen ?? null;
+
+                if (! is_int($duplicates) || $duplicates < 0) {
+                    report("{$label}: duplicates_seen must be a non-negative integer");
+                }
+
+                if (! in_array($payload->collected_by ?? null, ['tenant', 'sigilbase'], true)) {
+                    report("{$label}: collected_by must be tenant or sigilbase");
+                }
+
+                $method = $payload->method ?? null;
+
+                if (! is_string($method) || $method === '') {
+                    report("{$label}: method is missing");
+                }
+
+                // Rule 2: the chain.
+                if ($state['last_hash'] !== null) {
+                    if ($prev !== null && ! hash_equals($state['last_hash'], $prev)) {
+                        report("{$label}: prev_receipt_hash does not name the previous receipt's entry hash - the receipt chain is broken here");
+                    }
+
+                    if ($index !== null && $state['last_index'] !== null && $index !== $state['last_index'] + 1) {
+                        report("{$label}: receipt_index {$index} follows receipt {$state['last_index']} - a receipt is missing or repeated");
+                    }
+
+                    if ($state['cursor_known'] && ! collection_same($payload->cursor_before ?? null, $state['last_cursor'])) {
+                        report("{$label}: cursor_before does not equal the previous receipt's cursor_after - a collection is missing between them");
+                    }
+                } elseif ($index === 1) {
+                    if ($prev !== null && $prev !== $zero) {
+                        report("{$label}: the first receipt of a stream must name the zero hash as prev_receipt_hash");
+                    }
+                } elseif ($index !== null) {
+                    if ($anchored) {
+                        report("{$label}: receipt {$index} is the first for this stream in a bundle that starts at sequence 1 - receipts 1 to ".($index - 1).' are missing');
+                    } else {
+                        note("{$label}: the receipt chain enters this range at receipt {$index}; its link to receipt ".($index - 1).' lies before the range and is not checked here');
+                    }
+                }
+
+                $state['receipts']++;
+                $state['last_hash'] = $entryHash;
+                $state['last_index'] = $index;
+                $state['last_cursor'] = $payload->cursor_after ?? null;
+                $state['cursor_known'] = property_exists($payload, 'cursor_after');
+
+                break;
+
+            case 'stream.gap':
+                $counts['gaps']++;
+
+                if (($payload->gap_version ?? null) !== 1) {
+                    report("{$label}: gap_version is not 1");
+                }
+
+                $gapId = $payload->gap_id ?? null;
+
+                if (! is_string($gapId) || $gapId === '') {
+                    report("{$label}: gap_id is missing");
+                    $gapId = null;
+                }
+
+                $from = parse_rfc3339($payload->from ?? null);
+                $to = parse_rfc3339($payload->to ?? null);
+
+                if ($from === null || $to === null) {
+                    report("{$label}: from and to must be RFC 3339 timestamps");
+                } elseif ($from >= $to) {
+                    report("{$label}: from must precede to");
+                }
+
+                if (! is_string($payload->reason ?? null) || $payload->reason === '') {
+                    report("{$label}: reason is missing");
+                }
+
+                // Rule 3: where the gap sits in the chain.
+                $after = collection_hash($payload->declared_after_receipt_hash ?? null);
+
+                if ($after === null) {
+                    report("{$label}: declared_after_receipt_hash is not a 64-character hex digest");
+                } elseif ($state['last_hash'] !== null) {
+                    if (! hash_equals($state['last_hash'], $after)) {
+                        report("{$label}: declared_after_receipt_hash does not name the latest receipt before it - the gap is placed wrongly in the chain");
+                    }
+                } elseif ($anchored) {
+                    if ($after !== $zero) {
+                        report("{$label}: no receipt precedes this gap in a bundle that starts at sequence 1, so declared_after_receipt_hash must be the zero hash");
+                    }
+                } else {
+                    note("{$label}: the receipt this gap was declared after lies before the range and is not checked here");
+                }
+
+                if ($gapId !== null) {
+                    if (isset($state['gaps'][$gapId])) {
+                        report("{$label}: gap [{$gapId}] is declared twice");
+                    }
+
+                    $state['gaps'][$gapId] = [
+                        'from' => bundle_text($payload->from ?? ''),
+                        'to' => bundle_text($payload->to ?? ''),
+                        'reason' => bundle_text($payload->reason ?? ''),
+                        'healed' => false,
+                    ];
+                }
+
+                break;
+
+            case 'stream.gap_healed':
+                $gapId = $payload->gap_id ?? null;
+
+                if (! is_string($gapId) || $gapId === '') {
+                    report("{$label}: gap_id is missing");
+                } elseif (isset($state['gaps'][$gapId])) {
+                    $state['gaps'][$gapId]['healed'] = true;
+                } elseif ($anchored) {
+                    report("{$label}: heals gap [{$gapId}], which the chain never declared in a bundle that starts at sequence 1");
+                } else {
+                    note("{$label}: heals gap [{$gapId}], declared before the range; not checked here");
+                    $state['gaps'][$gapId] = ['from' => null, 'to' => null, 'reason' => null, 'healed' => true];
+                }
+
+                break;
+
+            case 'stream.settled':
+                $counts['settlements']++;
+                $state['settlements']++;
+
+                if (($payload->settlement_version ?? null) !== 1) {
+                    report("{$label}: settlement_version is not 1");
+                }
+
+                $day = $payload->day ?? null;
+
+                if (! is_string($day) || preg_match('/^\d{4}-\d{2}-\d{2}$/', $day) !== 1) {
+                    report("{$label}: day must be a date of the form YYYY-MM-DD");
+                    $day = null;
+                }
+
+                $settledState = $payload->state ?? null;
+
+                if (! in_array($settledState, ['settled', 'gapped'], true)) {
+                    report("{$label}: state must be settled or gapped");
+                    $settledState = null;
+                }
+
+                $supplement = $payload->supplement ?? null;
+
+                if (! is_int($supplement) || $supplement < 0) {
+                    report("{$label}: supplement must be a non-negative integer");
+                    $supplement = null;
+                }
+
+                // Rule 4: the receipt head and count the settlement names.
+                $receipts = $payload->receipts ?? null;
+
+                if (! $receipts instanceof stdClass) {
+                    report("{$label}: receipts must be an object");
+                } else {
+                    $head = $receipts->last_receipt_hash ?? null;
+
+                    if ($state['last_hash'] !== null) {
+                        $headHash = collection_hash($head);
+
+                        if ($headHash === null || ! hash_equals($state['last_hash'], $headHash)) {
+                            report("{$label}: receipts.last_receipt_hash does not name the latest receipt before it");
+                        }
+                    } elseif ($anchored) {
+                        if ($head !== null) {
+                            report("{$label}: no receipt precedes this settlement in a bundle that starts at sequence 1, so receipts.last_receipt_hash must be null");
+                        }
+                    } else {
+                        note("{$label}: the receipt head this settlement names lies before the range and is not checked here");
+                    }
+
+                    $receiptCount = $receipts->count ?? null;
+
+                    if (! is_int($receiptCount) || $receiptCount < 0) {
+                        report("{$label}: receipts.count must be a non-negative integer");
+                    } elseif ($anchored ? $receiptCount !== $state['receipts'] : $receiptCount < $state['receipts']) {
+                        report("{$label}: receipts.count is {$receiptCount} but {$state['receipts']} receipt(s) precede it in the chain");
+                    }
+                }
+
+                // The gaps it lists, against the gaps the chain declared.
+                $unhealed = false;
+
+                foreach (bundle_items($payload->gaps ?? null) as $item) {
+                    $itemId = $item instanceof stdClass ? ($item->gap_id ?? null) : null;
+
+                    if (! is_string($itemId) || $itemId === '') {
+                        report("{$label}: a listed gap has no gap_id");
+
+                        continue;
+                    }
+
+                    $healed = $item->healed ?? null;
+
+                    if (! is_bool($healed)) {
+                        report("{$label}: gap [{$itemId}] is listed without a boolean healed");
+                        $healed = false;
+                    }
+
+                    if (! $healed) {
+                        $unhealed = true;
+                    }
+
+                    $known = $state['gaps'][$itemId] ?? null;
+
+                    if ($known === null) {
+                        if ($anchored) {
+                            report("{$label}: lists gap [{$itemId}], which the chain never declared");
+                        } else {
+                            note("{$label}: gap [{$itemId}] was declared before the range and is not checked here");
+                        }
+
+                        continue;
+                    }
+
+                    if ($known['from'] !== null && (
+                        bundle_text($item->from ?? '') !== $known['from']
+                        || bundle_text($item->to ?? '') !== $known['to']
+                        || bundle_text($item->reason ?? '') !== $known['reason']
+                    )) {
+                        report("{$label}: gap [{$itemId}] is listed with bounds or a reason that differ from its declaration");
+                    }
+
+                    if ($known['healed'] !== $healed) {
+                        report("{$label}: gap [{$itemId}] is listed as ".($healed ? 'healed' : 'unhealed').' but the chain says otherwise');
+                    }
+                }
+
+                if ($settledState !== null && (($settledState === 'gapped') !== $unhealed)) {
+                    report("{$label}: state is {$settledState} but the listed gaps say ".($unhealed ? 'gapped' : 'settled'));
+                }
+
+                // Supplements chain to the settlement they add to.
+                $previous = $payload->previous_settlement ?? null;
+
+                if ($day !== null && $supplement !== null) {
+                    $prior = $state['days'][$day] ?? null;
+
+                    if ($supplement === 0) {
+                        if ($previous !== null) {
+                            report("{$label}: a first settlement must not name a previous one");
+                        }
+
+                        if ($prior !== null) {
+                            report("{$label}: day {$day} was already settled at sequence {$prior['seq']}");
+                        }
+                    } elseif (! $previous instanceof stdClass
+                        || ! is_int($previous->sequence ?? null)
+                        || collection_hash($previous->entry_hash ?? null) === null) {
+                        report("{$label}: a supplement must name the previous settlement by sequence and entry hash");
+                    } elseif ($prior !== null) {
+                        if ($previous->sequence !== $prior['seq']
+                            || ! hash_equals($prior['hash'], (string) collection_hash($previous->entry_hash))
+                            || $supplement !== $prior['supplement'] + 1) {
+                            report("{$label}: supplement {$supplement} for day {$day} does not follow the previous settlement in the chain");
+                        }
+                    } elseif ($previous->sequence >= $rangeFrom) {
+                        report("{$label}: names a previous settlement at sequence {$previous->sequence}, inside the range, that the chain does not hold for day {$day}");
+                    } else {
+                        note("{$label}: supplement {$supplement} for day {$day} follows a settlement before the range; not checked here");
+                    }
+
+                    $state['days'][$day] = ['supplement' => $supplement, 'seq' => $sequence, 'hash' => $entryHash];
+                }
+
+                break;
+        }
+
+        unset($state);
+    }
+
+    if (! $seen) {
+        if ($connection !== null && ($connection->role ?? null) === 'receipts') {
+            report("connection.json says this is a connection's receipt stream, but the range holds no collection record at all");
+        }
+
+        return null;
+    }
+
+    // Rule 7: connection.json against the chain.
+    if ($connection !== null && ($connection->role ?? null) === 'receipts') {
+        $listed = [];
+
+        foreach (bundle_items($connection->record_streams ?? null) as $item) {
+            if ($item instanceof stdClass && is_string($item->stream_key ?? null) && is_string($item->stream ?? null)) {
+                $listed[$item->stream_key] = $item->stream;
+            }
+        }
+
+        foreach ($streams as $state) {
+            if ($state['records_stream'] === null) {
+                continue;
+            }
+
+            if (! isset($listed[$state['key']])) {
+                report("connection.json does not list stream [{$state['key']}], whose configuration is in the range - the metadata contradicts the chain");
+            } elseif ($listed[$state['key']] !== $state['records_stream']) {
+                report("connection.json names records stream [{$listed[$state['key']]}] for [{$state['key']}] but the chain's configuration names [{$state['records_stream']}] - the metadata contradicts the chain");
+            }
+        }
+
+        if ($anchored) {
+            foreach ($listed as $listedKey => $slug) {
+                if (! isset($streams[COLLECTION_RESOURCE_PREFIX.$listedKey])) {
+                    report("connection.json lists stream [{$listedKey}] but a bundle that starts at sequence 1 holds no configuration for it");
+                }
+            }
+        }
+    } elseif ($connection === null) {
+        note('connection.json is absent; the collection records were checked from the chain alone');
+    }
+
+    foreach ($streams as $state) {
+        note(sprintf(
+            'stream %s: %d receipt(s) chained, %d gap(s) declared, %d settlement record(s)',
+            $state['key'],
+            $state['receipts'],
+            count($state['gaps']),
+            $state['settlements'],
+        ));
+    }
+
+    out("\n");
+
+    return ['streams' => count($streams), ...$counts];
+}
+
 /**
  * Fully verify one bundle. Prints progress; failures land in the global
  * list AND the returned array.
@@ -2447,6 +3026,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         'sigilbase-evidence/1.3',
         'sigilbase-evidence/1.4',
         'sigilbase-evidence/1.5',
+        'sigilbase-evidence/1.6',
     ];
 
     if (! in_array($format, $knownFormats, true)) {
@@ -2457,6 +3037,10 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
     }
 
     $streamId = $manifest->stream->id ?? null;
+    // Informational (format 1.5 bundles may carry it): a telemetry-class
+    // stream gets the honesty text under the summary. Never trusted for
+    // anything the maths decides.
+    $streamClass = $manifest->stream->class ?? null;
     $rangeFrom = $manifest->range->from ?? null;
     $rangeTo = $manifest->range->to ?? null;
 
@@ -3392,6 +3976,16 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         }
     }
 
+    // ---- collection records (format 1.6) --------------------------------------
+
+    // A connection's receipt stream: receipt chains, declared gaps and
+    // settlement records, checked against each other and against
+    // connection.json. Only format 1.6 defines them; an earlier format
+    // carrying such events is verified as events alone.
+    $collection = $format === 'sigilbase-evidence/1.6'
+        ? check_collection_records($dir, $eventsPath, $rangeFrom)
+        : null;
+
     // ---- consistency.json (format 1.1, optional) -----------------------------
 
     $consistencyPath = $dir.DIRECTORY_SEPARATOR.'consistency.json';
@@ -3470,11 +4064,13 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
 
     return [
         'stream_id' => $streamId,
+        'stream_class' => is_string($streamClass) ? $streamClass : null,
         'range_from' => $rangeFrom,
         'range_to' => $rangeTo,
         'event_count' => $eventCount,
         'checkpoint_count' => count($checkpoints),
         'redacted_count' => $redactedCount,
+        'collection' => $collection,
         // Cumulative RFC 6962 roots, captured as the events streamed past,
         // at the sizes something asks about. Not one per event: that would
         // be the memory this streaming exists to avoid.
@@ -3632,6 +4228,12 @@ if (! $consistencyMode) {
             out("Redactions: {$result['redacted_count']} payload(s) were destroyed by the tenant, each named by an authenticated declaration in this bundle; their hashes are preserved and the chain is intact.\n");
         }
 
+        if (($result['collection'] ?? null) !== null) {
+            $collection = $result['collection'];
+
+            out("Collection records: {$collection['receipts']} receipt(s) chained on {$collection['streams']} stream(s), {$collection['gaps']} gap(s) declared, {$collection['settlements']} settlement record(s); every link inside the range holds.\n");
+        }
+
         if ($code === EXIT_UNCONFIRMED) {
             out("\nUNCONFIRMED: the maths holds and nothing here has been altered, but this bundle's\n");
             out("origin is not established - see the results above. It is not evidence of tampering,\n");
@@ -3647,6 +4249,14 @@ if (! $consistencyMode) {
 
             out("\nConsistency state: tree_size={$consistencyState['tree_size']} root={$consistencyState['root']}\n");
             out("Record these two values: a future export can prove it extends this one (--consistency).\n");
+        }
+
+        // A telemetry-class stream (the manifest says so) carries the
+        // honesty text under its summary: what the ledger vouches for about
+        // records a client exported, and what it cannot. Binding wording,
+        // identical to the docs, the stream template and the bundle README.
+        if (($result['stream_class'] ?? null) === 'telemetry') {
+            out("\n".telemetry_honesty_text());
         }
     }
 

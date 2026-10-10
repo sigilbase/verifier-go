@@ -266,6 +266,9 @@ func Human(rep *verify.Report) string {
 	if rep.Mode == "verify" && rep.ExitCode != verify.ExitFail {
 		w("\n%d events and %d checkpoints verified for stream %s (%d..%d).\n", rep.Bundle.Events, rep.Bundle.Checkpoints, rep.Bundle.Stream, rep.Bundle.Range.From, rep.Bundle.Range.To)
 		w("No event has been modified, deleted, or reordered, and every checkpoint signature is genuine.\n")
+		if c := rep.Bundle.Collection; c != nil {
+			w("Collection records: %d receipt(s) chained on %d stream(s), %d gap(s) declared, %d settlement record(s); every link inside the range holds.\n", c.Receipts, c.Streams, c.Gaps, c.Settlements)
+		}
 		if rep.Bundle.RedactedEvents > 0 {
 			w("Redactions: %d payload(s) were destroyed by the tenant, each named by an authenticated declaration in this bundle; their hashes are preserved and the chain is intact.\n", rep.Bundle.RedactedEvents)
 		}

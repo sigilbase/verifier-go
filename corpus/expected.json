@@ -1,5 +1,5 @@
 {
-    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go).",
+    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go). Fixtures named collection-* are generated in the verifier repository by tools/build-corpus-collection.php from tests/CollectionHistory.php under the same key.",
     "default_options": [
         "--keys",
         "corpus/keys.json",
@@ -14,6 +14,83 @@
                 "content_integrity": "pass",
                 "signing_identity": "pass",
                 "timestamps": "pass",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-connection-json": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-format-1-5": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-gapped-state": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-receipt-link": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-receipts": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-receipts-partial": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-settled-head": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
                 "scope": "pass",
                 "redactions": "pass"
             }
@@ -89,139 +166,6 @@
             "exit": 1,
             "results": {
                 "content_integrity": "fail",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "redacted": {
-            "result": "pass",
-            "exit": 0,
-            "results": {
-                "content_integrity": "pass",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "redacted-pre-1.5": {
-            "result": "fail",
-            "exit": 1,
-            "results": {
-                "content_integrity": "pass",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "fail"
-            }
-        },
-        "swap": {
-            "result": "fail",
-            "exit": 1,
-            "results": {
-                "content_integrity": "fail",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "tamper-actor": {
-            "result": "fail",
-            "exit": 1,
-            "results": {
-                "content_integrity": "fail",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "tamper-payload": {
-            "result": "fail",
-            "exit": 1,
-            "results": {
-                "content_integrity": "fail",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "tamper-timestamp": {
-            "result": "fail",
-            "exit": 1,
-            "results": {
-                "content_integrity": "fail",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "untrusted-key": {
-            "result": "unconfirmed",
-            "exit": 3,
-            "results": {
-                "content_integrity": "pass",
-                "signing_identity": "unconfirmed",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            },
-            "options": []
-        },
-        "valid": {
-            "result": "pass",
-            "exit": 0,
-            "results": {
-                "content_integrity": "pass",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "valid-format-1": {
-            "result": "pass",
-            "exit": 0,
-            "results": {
-                "content_integrity": "pass",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "valid-format-1-1": {
-            "result": "pass",
-            "exit": 0,
-            "results": {
-                "content_integrity": "pass",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "valid-format-1-2": {
-            "result": "pass",
-            "exit": 0,
-            "results": {
-                "content_integrity": "pass",
-                "signing_identity": "pass",
-                "timestamps": "not_checked",
-                "scope": "pass",
-                "redactions": "pass"
-            }
-        },
-        "valid-format-1-3": {
-            "result": "pass",
-            "exit": 0,
-            "results": {
-                "content_integrity": "pass",
                 "signing_identity": "pass",
                 "timestamps": "not_checked",
                 "scope": "pass",
@@ -626,6 +570,139 @@
             "exit": 1,
             "results": {
                 "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "redacted": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "redacted-pre-1.5": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "fail"
+            }
+        },
+        "swap": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "tamper-actor": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "tamper-payload": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "tamper-timestamp": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "untrusted-key": {
+            "result": "unconfirmed",
+            "exit": 3,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "unconfirmed",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "options": []
+        },
+        "valid": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "valid-format-1": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "valid-format-1-1": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "valid-format-1-2": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "valid-format-1-3": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
                 "signing_identity": "pass",
                 "timestamps": "not_checked",
                 "scope": "pass",
