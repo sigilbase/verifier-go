@@ -40,7 +40,40 @@
                 "redactions": "pass"
             }
         },
+        "collection-gap-healed": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
         "collection-gapped-state": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-heal-unknown-gap": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "collection-healed-state": {
             "result": "fail",
             "exit": 1,
             "results": {
