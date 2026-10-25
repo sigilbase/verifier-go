@@ -778,6 +778,9 @@ type registryDecision struct {
 	payload    *cjson.Value
 	receivedAt time.Time
 	receivedOK bool
+	// status is the registry's state at the decision, as the log tells it:
+	// active, paused or archived.
+	status string
 }
 
 type registryClose struct {
@@ -807,6 +810,7 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 
 	parts := map[int64][][]*cjson.Value{}
 	credentials := map[string]*cjson.Value{}
+	status := "active"
 
 	for _, sequence := range order {
 		record := log.events[sequence]
@@ -814,6 +818,16 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 		payload := record.Field("payload")
 		if t, ok := parseRFC3339Value(record.Field("received_at")); ok {
 			out.lastReceived, out.lastOK = t, true
+		}
+
+		// The registry's state as its log tells it.
+		switch action {
+		case "stream.paused":
+			status = "paused"
+		case "stream.resumed":
+			status = "active"
+		case "stream.archived":
+			status = "archived"
 		}
 
 		// Every ingress.* record is counted, its payload present or not
@@ -902,7 +916,7 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 		outcome := action[len("ingress."):]
 		credential := text(payload.Field("credential"))
 
-		decision := &registryDecision{sequence: sequence, outcome: outcome, payload: payload}
+		decision := &registryDecision{sequence: sequence, outcome: outcome, payload: payload, status: status}
 		decision.receivedAt, decision.receivedOK = parseRFC3339Value(record.Field("received_at"))
 		out.decisions = append(out.decisions, decision)
 
@@ -1002,12 +1016,16 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 	}
 
 	// Rule 4: every policy is this registry's, and amended only as the one
-	// before it allows: never under frozen, under notice no sooner than its
-	// notice period after the amendment was recorded.
+	// before it allows: never under frozen, never while an amendment is
+	// pending, and under notice no sooner than its notice period after the
+	// amendment was recorded.
 	var previous *registryPolicy
 	for _, p := range read.policies {
 		if !isObject(p.rules) || !strEq(p.rules.Field("registry"), publicID) {
 			r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d is not this registry's (its registry is not %s)", p.version, publicID), ResultContent)
+		}
+		if isObject(p.rules) && strEq(p.rules.Field("amendment"), "notice") && !noticeInBounds(p.rules.Field("notice_seconds")) {
+			r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d: notice_seconds is not an integer from %d to %d", p.version, minNoticeSeconds, maxNoticeSeconds), ResultContent)
 		}
 		if previous == nil {
 			if p.version != 1 || p.action != "policy.committed" {
@@ -1019,9 +1037,11 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 			switch {
 			case previous.version == math.MaxInt64 || p.version != previous.version+1 || p.action != "policy.amended":
 				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d does not amend version %d", p.version, previous.version), ResultContent)
-			case !isObject(previousRules) || !strEq(previousRules.Field("amendment"), "notice") || !isInt(notice):
+			case !isObject(previousRules) || !strEq(previousRules.Field("amendment"), "notice") || !noticeInBounds(notice):
 				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d cannot be amended (it is not under notice), yet version %d amends it", previous.version, p.version), ResultContent)
-			case !p.effectiveOK || !p.recordedOK || effectiveBeforeNotice(p.effectiveAt, p.recordedAt, notice.Int):
+			case !p.recordedOK || !previous.effectiveOK || p.recordedAt.Before(previous.effectiveAt):
+				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d amends version %d before version %d took effect", p.version, previous.version, previous.version), ResultContent)
+			case !p.effectiveOK || effectiveBeforeNotice(p.effectiveAt, p.recordedAt, notice.Int):
 				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d takes effect sooner than the %d s notice its predecessor requires", p.version, notice.Int), ResultContent)
 			}
 		}
@@ -1040,10 +1060,37 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		}
 		return found
 	}
+	// The first acceptance of each key, as logged, recorded at its own
+	// decision before that decision is checked.
+	firstAcceptance := map[string]*cjson.Value{}
 	for _, decision := range read.decisions {
 		payload := decision.payload
 		at := decision.receivedAt
 		label := fmt.Sprintf("decision %d (%s)", decision.sequence, decision.outcome)
+		key := stringOrNil(payload.Field("commitment_key"))
+		var held *cjson.Value
+		if key != nil {
+			held = firstAcceptance[*key]
+		}
+		if decision.outcome == "accepted" && key != nil && held == nil && isObject(payload.Field("accepted")) {
+			firstAcceptance[*key] = payload.Field("accepted")
+		}
+
+		// A scope refusal and a throttle are decided before the registry's
+		// state is read; every other outcome after it.
+		needs := ""
+		switch decision.outcome {
+		case "refused_paused":
+			needs = "paused"
+		case "refused_archived":
+			needs = "archived"
+		case "accepted", "replay", "conflict", "invalid", "refused_early", "refused_late":
+			needs = "active"
+		}
+		if needs != "" && decision.status != needs {
+			r.reasonFail("DECISION_POLICY", fmt.Sprintf("%s was made while the log shows the registry %s", label, decision.status), ResultContent)
+		}
+
 		policy := inForceAt(at, decision.receivedOK, decision.sequence)
 		if policy == nil {
 			r.reasonFail("DECISION_POLICY", label+" was made with no policy in force", ResultContent)
@@ -1053,7 +1100,6 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 			r.reasonFail("DECISION_POLICY", fmt.Sprintf("%s does not name the hash of policy version %d, in force at its received_at", label, policy.version), ResultContent)
 		}
 
-		key := stringOrNil(payload.Field("commitment_key"))
 		var window *cjson.Value
 		if key != nil {
 			window = windowsByKey[policy.version][*key]
@@ -1070,10 +1116,34 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 				unknownKey = true
 			}
 		}
+		open := window != nil && openOK && closeOK && !at.Before(openAt) && at.Before(closeAt)
+
+		// A replay or conflict names the key's first acceptance as it was
+		// logged; a replay repeats its request, a conflict differs from it.
+		named := payload.Field("accepted")
+		heldDigest := ""
+		namesHolder := false
+		if held != nil {
+			heldDigest = text(held.Field("request_digest"))
+			heldSequence := held.Field("sequence")
+			if nullish(heldSequence) {
+				heldSequence = &cjson.Value{Kind: cjson.Bool, Bool: false}
+			}
+			namesHolder = isObject(named) &&
+				strictEqual(named.Field("sequence"), heldSequence) &&
+				text(named.Field("entry_hash")) == text(held.Field("entry_hash")) &&
+				text(named.Field("request_digest")) == heldDigest
+		}
+		digest := text(payload.Field("request_digest"))
+
 		var broken bool
 		switch decision.outcome {
 		case "accepted":
-			broken = window == nil || !openOK || !closeOK || at.Before(openAt) || !at.Before(closeAt)
+			broken = !open
+		case "replay":
+			broken = !open || !namesHolder || digest != heldDigest
+		case "conflict":
+			broken = !open || !namesHolder || digest == heldDigest
 		case "refused_early":
 			broken = window == nil || !openOK || !at.Before(openAt)
 		case "refused_late":
@@ -1086,23 +1156,44 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 			if key != nil {
 				shown = *key
 			}
-			r.reasonFail("DECISION_POLICY", fmt.Sprintf("%s for key [%s] contradicts the windows of policy version %d", label, shown, policy.version), ResultContent)
+			suffix := ""
+			if decision.outcome == "replay" || decision.outcome == "conflict" {
+				suffix = " or the key's logged acceptance"
+			}
+			r.reasonFail("DECISION_POLICY", fmt.Sprintf("%s for key [%s] contradicts the windows of policy version %d%s", label, shown, policy.version, suffix), ResultContent)
 		}
 	}
 
-	// Rule 6: acceptances and registry events match one to one. An
-	// acceptance of an event past the registry bundle's range was made
-	// after that bundle was exported: it is noted, not checked.
-	var registryTo int64
+	// Rule 6: acceptances and registry events match one to one. The log is
+	// exported first: an acceptance of an event past the registry bundle's
+	// range cannot be checked, so the run is unconfirmed until the registry
+	// is exported again. Registry events received after the log's last
+	// record, past every event it accepts, were decided after the log's
+	// export: they are noted.
+	var registryTo, highestNamed int64
 	if isObject(registryRange) && isInt(registryRange.Field("to")) {
 		registryTo = registryRange.Field("to").Int
+	}
+	var registryLastAt time.Time
+	registryLastOK := false
+	for _, sequence := range registry.order {
+		if t, ok := parseRFC3339Value(registry.events[sequence].Field("received_at")); ok && (!registryLastOK || t.After(registryLastAt)) {
+			registryLastAt, registryLastOK = t, true
+		}
 	}
 	claimed := map[int64]int{}
 	for _, acceptance := range read.accepted {
 		payload := acceptance.payload
 		named := payload.Field("accepted")
-		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > registryTo {
-			r.note(fmt.Sprintf("decision %d accepts registry event %d, after the registry bundle's range: not checked", acceptance.sequence, named.Field("sequence").Int))
+		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > highestNamed {
+			highestNamed = named.Field("sequence").Int
+		}
+		// The registry is written in time order too: an acceptance from
+		// before its last event names an event it should hold.
+		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > registryTo &&
+			(!acceptance.receivedOK || !registryLastOK || !acceptance.receivedAt.Before(registryLastAt)) {
+			r.setUnconfirmedReason("ACCEPTED_UNMATCHED")
+			r.unconfirmed(fmt.Sprintf("ACCEPTED_UNMATCHED: decision %d accepts registry event %d, past the registry bundle's range: export the registry again, after the log", acceptance.sequence, named.Field("sequence").Int), ResultScope)
 			continue
 		}
 		var event *cjson.Value
@@ -1119,7 +1210,12 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		claimed[named.Field("sequence").Int]++
 	}
 	for _, sequence := range registry.order {
-		if count := claimed[sequence]; count != 1 {
+		count := claimed[sequence]
+		if eventAt, ok := parseRFC3339Value(registry.events[sequence].Field("received_at")); count == 0 && sequence > highestNamed && ok && read.lastOK && eventAt.After(read.lastReceived) {
+			r.note(fmt.Sprintf("registry event %d was received after the log's last record: its decision is past the log bundle's range, not checked", sequence))
+			continue
+		}
+		if count != 1 {
 			r.reasonFail("PARENT_UNMATCHED", fmt.Sprintf("registry event %d is accepted by %d decision(s), not exactly one", sequence, count), ResultContent)
 		}
 	}
@@ -1249,6 +1345,21 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		if !r.checkReceipt(body, doc.signature, label) {
 			continue
 		}
+
+		// A receipt for a decision made after the log's export holds no
+		// record to check against yet: unconfirmed, not unlogged. One from
+		// before the log's last record is missing from it.
+		var logTo int64
+		if isObject(logRange) && isInt(logRange.Field("to")) {
+			logTo = logRange.Field("to").Int
+		}
+		receiptAt, receiptOK := parseRFC3339Value(body.Field("received_at"))
+		if d := body.Field("decision_seq"); isInt(d) && d.Int > logTo &&
+			(!receiptOK || !read.lastOK || !receiptAt.Before(read.lastReceived)) {
+			r.setUnconfirmedReason("RECEIPT_NOT_LOGGED")
+			r.unconfirmed(fmt.Sprintf("RECEIPT_NOT_LOGGED: %s names decision %d, past the log bundle's range: export the log again", label, d.Int), ResultScope)
+			continue
+		}
 		var record *cjson.Value
 		if d := body.Field("decision_seq"); isInt(d) {
 			record = log.events[d.Int]
@@ -1265,6 +1376,18 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 	}
 
 	return read.counts, checked, nil
+}
+
+// The notice period a policy under "notice" may ask for: an hour to a
+// hundred years (MIN_NOTICE_SECONDS, MAX_NOTICE_SECONDS).
+const (
+	minNoticeSeconds = 3600
+	maxNoticeSeconds = 3155760000
+)
+
+// noticeInBounds is notice_in_bounds.
+func noticeInBounds(v *cjson.Value) bool {
+	return isInt(v) && v.Int >= minNoticeSeconds && v.Int <= maxNoticeSeconds
 }
 
 // effectiveBeforeNotice is "$effective < $recorded->modify('+N seconds')",

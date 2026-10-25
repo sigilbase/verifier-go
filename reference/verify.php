@@ -4111,6 +4111,15 @@ const RECEIPT_VERSION = 'sigilbase-receipt/1';
 /** A window closed more than this long before the log's last record must have its close record. */
 const WINDOW_CLOSE_GRACE_SECONDS = 300;
 
+/** The notice period a policy under "notice" may ask for: an hour to a hundred years. */
+const MIN_NOTICE_SECONDS = 3600;
+const MAX_NOTICE_SECONDS = 3155760000;
+
+function notice_in_bounds(mixed $notice): bool
+{
+    return is_int($notice) && $notice >= MIN_NOTICE_SECONDS && $notice <= MAX_NOTICE_SECONDS;
+}
+
 const REGISTRY_OUTCOMES = [
     'accepted', 'replay', 'conflict', 'invalid', 'refused_early', 'refused_late',
     'refused_scope', 'refused_paused', 'refused_archived', 'throttled',
@@ -4601,11 +4610,21 @@ function read_registry_log(array $records): array
     $outcomes = [];
     $byCredential = [];
     $lastReceivedAt = null;
+    $status = 'active';
 
     foreach ($records as $sequence => $record) {
         $action = bundle_text($record->action ?? null);
         $payload = $record->payload ?? null;
         $lastReceivedAt = parse_rfc3339($record->received_at ?? null) ?? $lastReceivedAt;
+
+        // The registry's state as its log tells it: a pause, resume or
+        // archive is recorded under the registry's lock, with the change.
+        $status = match ($action) {
+            'stream.paused' => 'paused',
+            'stream.resumed' => 'active',
+            'stream.archived' => 'archived',
+            default => $status,
+        };
 
         if (str_starts_with($action, 'ingress.')) {
             $outcome = substr($action, strlen('ingress.'));
@@ -4700,6 +4719,7 @@ function read_registry_log(array $records): array
             'outcome' => $outcome,
             'payload' => $payload,
             'received_at' => parse_rfc3339($record->received_at ?? null),
+            'status' => $status,
         ];
 
         if ($outcome !== 'accepted') {
@@ -4813,8 +4833,9 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
     }
 
     // Rule 4: every policy is this registry's, and amended only as the one
-    // before it allows: never under frozen, under notice no sooner than its
-    // notice period after the amendment was recorded.
+    // before it allows: never under frozen, never while an amendment is
+    // pending, and under notice no sooner than its notice period after the
+    // amendment was recorded.
     $previous = null;
 
     foreach ($read['policies'] as $version => $policy) {
@@ -4822,6 +4843,10 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
 
         if ($rules === null || ($rules->registry ?? null) !== $publicId) {
             reason_fail('POLICY_AMENDMENT', "policy version {$version} is not this registry's (its registry is not {$publicId})");
+        }
+
+        if ($rules !== null && ($rules->amendment ?? null) === 'notice' && ! notice_in_bounds($rules->notice_seconds ?? null)) {
+            reason_fail('POLICY_AMENDMENT', "policy version {$version}: notice_seconds is not an integer from ".MIN_NOTICE_SECONDS.' to '.MAX_NOTICE_SECONDS);
         }
 
         if ($previous === null) {
@@ -4834,9 +4859,12 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
 
             if ($version !== $previous + 1 || $policy['action'] !== 'policy.amended') {
                 reason_fail('POLICY_AMENDMENT', "policy version {$version} does not amend version {$previous}");
-            } elseif (! $previousRules instanceof stdClass || ($previousRules->amendment ?? null) !== 'notice' || ! is_int($notice)) {
+            } elseif (! $previousRules instanceof stdClass || ($previousRules->amendment ?? null) !== 'notice' || ! notice_in_bounds($notice)) {
                 reason_fail('POLICY_AMENDMENT', "policy version {$previous} cannot be amended (it is not under notice), yet version {$version} amends it");
-            } elseif ($policy['effective_at'] === null || $policy['recorded_at'] === null
+            } elseif ($policy['recorded_at'] === null || $read['policies'][$previous]['effective_at'] === null
+                || $policy['recorded_at'] < $read['policies'][$previous]['effective_at']) {
+                reason_fail('POLICY_AMENDMENT', "policy version {$version} amends version {$previous} before version {$previous} took effect");
+            } elseif ($policy['effective_at'] === null
                 || $policy['effective_at'] < $policy['recorded_at']->modify("+{$notice} seconds")) {
                 reason_fail('POLICY_AMENDMENT', "policy version {$version} takes effect sooner than the {$notice} s notice its predecessor requires");
             }
@@ -4845,10 +4873,13 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         $previous = $version;
     }
 
-    // Rule 5: every decision follows the policy in force when it was made:
-    // it names that policy's hash, an acceptance falls inside its key's
-    // window, an early or late refusal is early or late, and a refusal for
-    // an unknown key is for a key that policy does not hold.
+    // Rule 5: every decision follows the registry's state and the policy in
+    // force when it was made: it names that policy's hash, a refusal for a
+    // pause or an archive comes while the log shows one and nothing else
+    // does, an acceptance falls inside its key's window, a replay or
+    // conflict too and names the key's earlier acceptance, an early or late
+    // refusal is early or late, and a refusal for an unknown key is for a
+    // key that policy does not hold.
     $inForceAt = static function (?DateTimeImmutable $at, int $before) use ($read): ?int {
         $found = null;
 
@@ -4861,11 +4892,32 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         return $found;
     };
 
+    $firstAcceptance = [];
+
     foreach ($read['decisions'] as $decision) {
         $payload = $decision['payload'];
         $at = $decision['received_at'];
         $version = $inForceAt($at, $decision['sequence']);
         $label = "decision {$decision['sequence']} ({$decision['outcome']})";
+        $key = is_string($payload->commitment_key ?? null) ? $payload->commitment_key : null;
+        $held = $key === null ? null : ($firstAcceptance[$key] ?? null);
+
+        if ($decision['outcome'] === 'accepted' && $key !== null && $held === null && ($payload->accepted ?? null) instanceof stdClass) {
+            $firstAcceptance[$key] = $payload->accepted;
+        }
+
+        // A scope refusal and a throttle are decided before the registry's
+        // state is read; every other outcome after it.
+        $needs = match ($decision['outcome']) {
+            'refused_paused' => 'paused',
+            'refused_archived' => 'archived',
+            'accepted', 'replay', 'conflict', 'invalid', 'refused_early', 'refused_late' => 'active',
+            default => null,
+        };
+
+        if ($needs !== null && $decision['status'] !== $needs) {
+            reason_fail('DECISION_POLICY', "{$label} was made while the log shows the registry {$decision['status']}");
+        }
 
         if ($version === null) {
             reason_fail('DECISION_POLICY', "{$label} was made with no policy in force");
@@ -4877,14 +4929,26 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
             reason_fail('DECISION_POLICY', "{$label} does not name the hash of policy version {$version}, in force at its received_at");
         }
 
-        $key = is_string($payload->commitment_key ?? null) ? $payload->commitment_key : null;
         $window = $key === null ? null : ($windowsByKey[$version][$key] ?? null);
         $openAt = $window === null ? null : parse_rfc3339($window->open_at ?? null);
         $closeAt = $window === null ? null : parse_rfc3339($window->close_at ?? null);
         $reasons = array_filter(bundle_items($payload->reasons ?? null), is_string(...));
+        $open = $window !== null && $openAt !== null && $closeAt !== null && $at >= $openAt && $at < $closeAt;
+
+        // A replay or conflict names the key's first acceptance as it was
+        // logged; a replay repeats its request, a conflict differs from it.
+        $named = $payload->accepted ?? null;
+        $heldDigest = $held === null ? null : bundle_text($held->request_digest ?? null);
+        $namesHolder = $held !== null && $named instanceof stdClass
+            && ($named->sequence ?? null) === ($held->sequence ?? false)
+            && bundle_text($named->entry_hash ?? null) === bundle_text($held->entry_hash ?? null)
+            && bundle_text($named->request_digest ?? null) === $heldDigest;
+        $digest = bundle_text($payload->request_digest ?? null);
 
         $broken = match ($decision['outcome']) {
-            'accepted' => $window === null || $openAt === null || $closeAt === null || $at < $openAt || $at >= $closeAt,
+            'accepted' => ! $open,
+            'replay' => ! $open || ! $namesHolder || $digest !== $heldDigest,
+            'conflict' => ! $open || ! $namesHolder || $digest === $heldDigest,
             'refused_early' => $window === null || $openAt === null || $at >= $openAt,
             'refused_late' => $window === null || $closeAt === null || $at < $closeAt,
             'invalid' => in_array('unknown_key', $reasons, true) && $window !== null,
@@ -4892,23 +4956,40 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         };
 
         if ($broken) {
-            reason_fail('DECISION_POLICY', "{$label} for key [".($key ?? '')."] contradicts the windows of policy version {$version}");
+            reason_fail('DECISION_POLICY', "{$label} for key [".($key ?? '')."] contradicts the windows of policy version {$version}".(in_array($decision['outcome'], ['replay', 'conflict'], true) ? " or the key's logged acceptance" : ''));
         }
     }
 
-    // Rule 6: acceptances and registry events match one to one. An
-    // acceptance of an event past the registry bundle's range was made after
-    // that bundle was exported (the log is exported after the registry): it
-    // is noted, not checked.
+    // Rule 6: acceptances and registry events match one to one. The log is
+    // exported first: an acceptance of an event past the registry bundle's
+    // range cannot be checked, so the run is unconfirmed until the registry
+    // is exported again. Registry events received after the log's last
+    // record, past every event it accepts, were decided after the log's
+    // export: they are noted.
     $claimed = [];
+    $highestNamed = 0;
     $registryTo = $registryRange instanceof stdClass && is_int($registryRange->to ?? null) ? $registryRange->to : 0;
+    $registryLastAt = null;
+
+    foreach ($registry['events'] as $event) {
+        $eventAt = parse_rfc3339($event->received_at ?? null);
+        $registryLastAt = $eventAt !== null && ($registryLastAt === null || $eventAt > $registryLastAt) ? $eventAt : $registryLastAt;
+    }
 
     foreach ($read['accepted'] as $acceptance) {
         $payload = $acceptance['payload'];
         $named = $payload->accepted ?? null;
 
-        if ($named instanceof stdClass && is_int($named->sequence ?? null) && $named->sequence > $registryTo) {
-            note("decision {$acceptance['sequence']} accepts registry event {$named->sequence}, after the registry bundle's range: not checked");
+        if ($named instanceof stdClass && is_int($named->sequence ?? null)) {
+            $highestNamed = max($highestNamed, $named->sequence);
+        }
+
+        // The registry is written in time order too: an acceptance from
+        // before its last event names an event it should hold.
+        if ($named instanceof stdClass && is_int($named->sequence ?? null) && $named->sequence > $registryTo
+            && ($acceptance['received_at'] === null || $registryLastAt === null || $acceptance['received_at'] >= $registryLastAt)) {
+            set_reason('ACCEPTED_UNMATCHED', unconfirmed: true);
+            unconfirmed("ACCEPTED_UNMATCHED: decision {$acceptance['sequence']} accepts registry event {$named->sequence}, past the registry bundle's range: export the registry again, after the log", RESULT_SCOPE);
 
             continue;
         }
@@ -4929,6 +5010,13 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
 
     foreach ($registry['events'] as $sequence => $event) {
         $count = $claimed[$sequence] ?? 0;
+        $eventAt = parse_rfc3339($event->received_at ?? null);
+
+        if ($count === 0 && $sequence > $highestNamed && $eventAt !== null && $read['last_received_at'] !== null && $eventAt > $read['last_received_at']) {
+            note("registry event {$sequence} was received after the log's last record: its decision is past the log bundle's range, not checked");
+
+            continue;
+        }
 
         if ($count !== 1) {
             reason_fail('PARENT_UNMATCHED', "registry event {$sequence} is accepted by {$count} decision(s), not exactly one");
@@ -5056,6 +5144,21 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         $checked++;
 
         if (! check_receipt($body, $document['signature'], $label)) {
+            continue;
+        }
+
+        $logTo = $logRange instanceof stdClass && is_int($logRange->to ?? null) ? $logRange->to : 0;
+        $receiptAt = parse_rfc3339($body->received_at ?? null);
+
+        // A receipt for a decision made after the log's export holds no
+        // record to check against yet: unconfirmed, not unlogged. The log is
+        // written in time order, so one from before its last record is
+        // missing from it.
+        if (is_int($body->decision_seq ?? null) && $body->decision_seq > $logTo
+            && ($receiptAt === null || $read['last_received_at'] === null || $receiptAt >= $read['last_received_at'])) {
+            set_reason('RECEIPT_NOT_LOGGED', unconfirmed: true);
+            unconfirmed("RECEIPT_NOT_LOGGED: {$label} names decision {$body->decision_seq}, past the log bundle's range: export the log again", RESULT_SCOPE);
+
             continue;
         }
 
@@ -5374,7 +5477,7 @@ if ($reconcileMode && $receiptFile === null && ! $consistencyMode && count($targ
     if ($code === EXIT_FAIL) {
         out('FAIL: '.count($failures).' problem(s) found'.(run_reason() !== null ? ', the first rule broken being '.run_reason() : '').". The registry does NOT account for every request.\n");
     } elseif ($code === EXIT_UNCONFIRMED) {
-        out("UNCONFIRMED: every rule holds, but a signing identity is not established - see the results below.\n");
+        out("UNCONFIRMED: no rule is broken, but not every check could be made (an unknown signing key, or a record past the other bundle's range) - see the results below.\n");
     } else {
         out("PASS: every decision the log records is accounted for, every acceptance is a registry event and the reverse, and every receipt checked is logged.\n");
     }

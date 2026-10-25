@@ -300,7 +300,7 @@ func Human(rep *verify.Report) string {
 		case verify.ExitFail:
 			w("FAIL: %d problem(s) found, the first rule broken being %s. The registry does NOT account for every request.\n", problems, reasonText(rep.Reason))
 		case verify.ExitUnconfirmed:
-			w("UNCONFIRMED: every rule holds, but a signing identity is not established (see the results below).\n")
+			w("UNCONFIRMED: no rule is broken, but not every check could be made (an unknown signing key, or a record past the other bundle's range) - see the results below.\n")
 		default:
 			w("PASS: every decision the log records is accounted for, every acceptance is a registry event and the reverse, and every receipt checked is logged.\n")
 		}
