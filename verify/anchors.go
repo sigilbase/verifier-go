@@ -14,17 +14,21 @@ import (
 
 // checkAnchors is the anchors.json section of verify_bundle: RFC 3161
 // tokens over checkpoint hashes, validated against trust roots this
-// verifier carries rather than roots the bundle supplied.
-func (r *run) checkAnchors(b bundle.Reader, skipAnchors bool, checkpointHashes map[string]bool) *hardError {
+// verifier carries rather than roots the bundle supplied. It returns the
+// latest genTime (Unix seconds) of an anchor that verified against roots
+// this verifier trusts, nil when none did (verify_bundle's
+// latest_anchor_at): the bundle was exported after it.
+func (r *run) checkAnchors(b bundle.Reader, skipAnchors bool, checkpointHashes map[string]bool) (*int64, *hardError) {
+	var latestAnchorAt *int64
 	if !b.IsFile("anchors.json") {
 		// No anchors at all: nothing was checked, which is not the same as
 		// checked and sound.
 		r.results.demote(ResultTimestamps, StateNotChecked)
-		return nil
+		return nil, nil
 	}
 	doc, herr := decodeOptional(b, "anchors.json")
 	if herr != nil {
-		return herr
+		return nil, herr
 	}
 	var anchors []*cjson.Value
 	if isObject(doc) && isArray(doc.Field("anchors")) {
@@ -34,10 +38,10 @@ func (r *run) checkAnchors(b bundle.Reader, skipAnchors bool, checkpointHashes m
 	case len(anchors) > 0 && skipAnchors:
 		r.info(fmt.Sprintf("Skipping %d RFC 3161 anchor token(s) (--skip-anchors).", len(anchors)))
 		r.results.demote(ResultTimestamps, StateNotChecked)
-		return nil
+		return nil, nil
 	case len(anchors) == 0:
 		r.results.demote(ResultTimestamps, StateNotChecked)
-		return nil
+		return nil, nil
 	}
 
 	r.info("Checking anchors.json (RFC 3161 timestamps)...")
@@ -84,8 +88,13 @@ func (r *run) checkAnchors(b bundle.Reader, skipAnchors bool, checkpointHashes m
 		}
 
 		message, _ := hexBytes(checkpointHash)
-		for _, problem := range tst.Validate(token, message, caPEM) {
+		anchorProblems := tst.Validate(token, message, caPEM)
+		for _, problem := range anchorProblems {
 			r.report(fmt.Sprintf("%s: %s", label, problem), ResultTimestamps)
+		}
+		if len(anchorProblems) == 0 && trustedPEM != nil && (latestAnchorAt == nil || token.GenTime > *latestAnchorAt) {
+			at := token.GenTime
+			latestAnchorAt = &at
 		}
 
 		if trustedPEM == nil && bundlePEM != nil {
@@ -108,7 +117,7 @@ func (r *run) checkAnchors(b bundle.Reader, skipAnchors bool, checkpointHashes m
 			r.note(fmt.Sprintf("%s: the exporter recorded this token as issued by a qualified trust service provider - %s%s. Informational: the verdict rests on the cryptographic checks alone", label, providerName, jurisdiction))
 		}
 	}
-	return nil
+	return latestAnchorAt, nil
 }
 
 // checkCertificates is the certificates/ section of verify_bundle:

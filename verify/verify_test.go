@@ -507,3 +507,63 @@ func TestReceiptFilesListing(t *testing.T) {
 		t.Errorf("listed %v", names)
 	}
 }
+
+// A trusted anchor dated after a receipt's seal deadline turns a record
+// past the log's range from "may be later" into "missing" (verify.php's
+// testATrustedAnchorAfterASealDeadlineTurnsAMissingRecordIntoAFailure).
+func TestATrustedAnchorAfterASealDeadlineTurnsAMissingRecordIntoAFailure(t *testing.T) {
+	root := "../corpus/registry/"
+	receipt := root + "receipts/13-refused_late.json"
+	data, err := os.ReadFile(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := cjson.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealBy, ok := parseRFC3339Value(doc.Field("body").Field("seal_by"))
+	if !ok {
+		t.Fatal("receipt seal_by does not parse")
+	}
+	keys, err := LoadReceiptKeyFile(root + "receipt-keys.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(anchoredAt *int64) []string {
+		r := newRun(&Options{ReceiptKeys: keys, ReceiptKeysSource: "test"})
+		registry, herr := loadVerifiedBundle(root + "truncated-tail-registry.zip")
+		if herr != nil {
+			t.Fatal(herr.Message)
+		}
+		log, herr := loadVerifiedBundle(root + "truncated-tail-log.zip")
+		if herr != nil {
+			t.Fatal(herr.Message)
+		}
+		log.anchoredAt = anchoredAt
+		if _, _, herr := r.reconcileRegistry(registry, log, []string{receipt}); herr != nil {
+			t.Fatal(herr.Message)
+		}
+		reason := ""
+		if rr := r.runReason(); rr != nil {
+			reason = *rr
+		}
+		return []string{reason, r.results.Get(ResultContent), r.results.Get(ResultScope)}
+	}
+
+	after := sealBy.Unix() + 60
+	before := after - 120
+	for _, c := range []struct {
+		anchoredAt *int64
+		want       string
+	}{
+		{nil, "RECEIPT_NOT_LOGGED pass unconfirmed"},
+		{&before, "RECEIPT_NOT_LOGGED pass unconfirmed"},
+		{&after, "RECEIPT_NOT_LOGGED fail pass"},
+	} {
+		if got := strings.Join(run(c.anchoredAt), " "); got != c.want {
+			t.Errorf("anchored_at %v: got %s, want %s", c.anchoredAt, got, c.want)
+		}
+	}
+}

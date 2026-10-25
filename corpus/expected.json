@@ -1244,16 +1244,16 @@
             "registry": "corpus/registry/registry-ahead-registry.zip",
             "log": "corpus/registry/registry-ahead-log.zip",
             "receipts": "corpus/registry/receipts",
-            "result": "pass",
-            "exit": 0,
+            "result": "unconfirmed",
+            "exit": 3,
             "results": {
                 "content_integrity": "pass",
                 "signing_identity": "pass",
                 "timestamps": "not_checked",
-                "scope": "pass",
+                "scope": "unconfirmed",
                 "redactions": "pass"
             },
-            "reason": null,
+            "reason": "PARENT_UNMATCHED",
             "decisions": 7,
             "receipts_checked": 7
         },
@@ -1357,6 +1357,57 @@
             },
             "reason": "DECISION_POLICY",
             "decisions": 8,
+            "receipts_checked": 7
+        },
+        "backdated-tail": {
+            "registry": "corpus/registry/backdated-tail-registry.zip",
+            "log": "corpus/registry/backdated-tail-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "unconfirmed",
+                "redactions": "pass"
+            },
+            "reason": "NOT_TIME_ORDERED",
+            "decisions": 7,
+            "receipts_checked": 7
+        },
+        "stale-log": {
+            "registry": "corpus/registry/stale-log-registry.zip",
+            "log": "corpus/registry/stale-log-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "unconfirmed",
+            "exit": 3,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "unconfirmed",
+                "redactions": "pass"
+            },
+            "reason": "PARENT_UNMATCHED",
+            "decisions": 1,
+            "receipts_checked": 7
+        },
+        "truncated-tail": {
+            "registry": "corpus/registry/truncated-tail-registry.zip",
+            "log": "corpus/registry/truncated-tail-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "unconfirmed",
+            "exit": 3,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "unconfirmed",
+                "redactions": "pass"
+            },
+            "reason": "RECEIPT_NOT_LOGGED",
+            "decisions": 6,
             "receipts_checked": 7
         },
         "valid-without-receipts": {
