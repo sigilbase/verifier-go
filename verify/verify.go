@@ -38,6 +38,12 @@ type Options struct {
 	TSARoots       *string
 	TSARootsSource string
 
+	// ReceiptKeys replaces the built-in trusted receipt key set; nil means
+	// the embedded set. ReceiptKeysSource names it ("--receipt-keys
+	// <file>").
+	ReceiptKeys       *ReceiptKeySet
+	ReceiptKeysSource string
+
 	// SkipAnchors skips RFC 3161 anchor validation.
 	SkipAnchors bool
 

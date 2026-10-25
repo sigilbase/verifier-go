@@ -24,12 +24,18 @@ const usage = `Sigilbase evidence verifier (sigilbase-verify).
 usage: sigilbase-verify [options] <bundle.zip | extracted-bundle-directory>
        sigilbase-verify --consistency <old-bundle> <new-bundle>
        sigilbase-verify --consistency <bundle> --root <hex> --size <n>
+       sigilbase-verify --receipt <receipt.json> [<bundle> [<decision-log-bundle>]]
+       sigilbase-verify --reconcile <registry-bundle> <decision-log-bundle> [--receipts <dir>]
 
 Options:
   --keys <file>       trust these signing keys instead of the built-in set.
                       Same shape as https://app.sigilbase.io/api/v1/keys
   --tsa-roots <file>  trust these timestamp-authority roots (PEM) instead of
                       the built-in ones
+  --receipt-keys <file>
+                      trust these receipt keys instead of the built-in set.
+                      Same shape as https://app.sigilbase.io/api/v1/receipt-keys
+  --receipts <dir>    with --reconcile: the receipts a submitter holds
   --skip-anchors      do not validate the RFC 3161 anchors
   --json              one machine-readable JSON document on stdout
   --quiet             no output at all; the exit code is the whole answer
@@ -67,6 +73,11 @@ type options struct {
 	keysFile     *string
 	tsaRootsFile *string
 	targets      []string
+
+	receiptFile     *string
+	reconcile       bool
+	receiptsDir     *string
+	receiptKeysFile *string
 }
 
 // run parses the arguments exactly as verify.php does, including the
@@ -117,6 +128,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 		case strings.HasPrefix(a, "--tsa-roots="):
 			v := a[len("--tsa-roots="):]
 			o.tsaRootsFile = &v
+		case a == "--receipt":
+			v := next(&i)
+			o.receiptFile = &v
+		case strings.HasPrefix(a, "--receipt="):
+			v := a[len("--receipt="):]
+			o.receiptFile = &v
+		case a == "--reconcile":
+			o.reconcile = true
+		case a == "--receipts":
+			v := next(&i)
+			o.receiptsDir = &v
+		case strings.HasPrefix(a, "--receipts="):
+			v := a[len("--receipts="):]
+			o.receiptsDir = &v
+		case a == "--receipt-keys":
+			v := next(&i)
+			o.receiptKeysFile = &v
+		case strings.HasPrefix(a, "--receipt-keys="):
+			v := a[len("--receipt-keys="):]
+			o.receiptKeysFile = &v
 		case a == "--help" || a == "-h":
 			o.showHelp = true
 		case strings.HasPrefix(a, "--"):
@@ -142,6 +173,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		vopts.Keys = set
 		vopts.KeysSource = "--keys " + *o.keysFile
 	}
+	if o.receiptKeysFile != nil {
+		set, err := verify.LoadReceiptKeyFile(*o.receiptKeysFile)
+		if err != nil {
+			return failHard(&o, stdout, stderr, err.Error(), verify.ExitError)
+		}
+		vopts.ReceiptKeys = set
+		vopts.ReceiptKeysSource = "--receipt-keys " + *o.receiptKeysFile
+	}
 	if o.tsaRootsFile != nil {
 		info, err := os.Stat(*o.tsaRootsFile)
 		if err != nil || !info.Mode().IsRegular() {
@@ -158,6 +197,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	var report *verify.Report
 	switch {
+	case o.receiptFile != nil && !o.reconcile && !o.consistency && len(o.targets) <= 2:
+		report = verify.Receipt(*o.receiptFile, o.targets, vopts)
+	case o.reconcile && o.receiptFile == nil && !o.consistency && len(o.targets) == 2:
+		report = verify.Reconcile(o.targets[0], o.targets[1], o.receiptsDir, vopts)
+	case o.receiptFile != nil || o.reconcile:
+		if !o.quiet && !o.jsonMode {
+			fmt.Fprint(stderr, usage)
+		}
+		return failHard(&o, stdout, stderr, "invalid combination of arguments", verify.ExitError)
 	case !o.consistency:
 		if len(o.targets) != 1 {
 			if !o.quiet && !o.jsonMode {
@@ -234,6 +282,29 @@ func Human(rep *verify.Report) string {
 		default:
 			w("PASS: every result that was checked holds.\n")
 		}
+	case "receipt":
+		switch rep.ExitCode {
+		case verify.ExitFail:
+			w("FAIL: %d problem(s) found, the first being %s. This receipt does NOT hold.\n", problems, reasonText(rep.Reason))
+		case verify.ExitUnconfirmed:
+			w("UNCONFIRMED: nothing here contradicts the receipt, but whose signature it carries is not established (%s).\n", reasonText(rep.Reason))
+		default:
+			if rep.Receipt != nil && rep.Receipt.Subject == "checked" {
+				w("PASS: this receipt is the signed statement of Sigilbase, and the records it names say the same.\n")
+			} else {
+				w("PASS: this receipt is the signed statement of Sigilbase.\n")
+			}
+		}
+	case "reconcile":
+		switch rep.ExitCode {
+		case verify.ExitFail:
+			w("FAIL: %d problem(s) found, the first rule broken being %s. The registry does NOT account for every request.\n", problems, reasonText(rep.Reason))
+		case verify.ExitUnconfirmed:
+			w("UNCONFIRMED: no rule is broken, but not every check could be made (an unknown signing key, or a record past the other bundle's range) - see the results below.\n")
+		default:
+			w("PASS: every decision the log records is accounted for, every acceptance is a registry event and the reverse, and every receipt checked is logged.\n")
+		}
+		w("No one can show a request that never reached Sigilbase: this proves what was received, not what was sent.\n")
 	default:
 		if rep.ExitCode == verify.ExitFail {
 			w("FAIL: %d problem(s) found. Consistency does NOT hold.\n", problems)
@@ -252,6 +323,13 @@ func Human(rep *verify.Report) string {
 		w("Mode:   consistency between two bundles\n")
 	case "consistency-recorded-root":
 		w("Mode:   consistency against a recorded root\n")
+	case "receipt":
+		w("Mode:   receipt\n")
+		w("Receipt: %s\n", rep.ReceiptPath)
+		w("Receipt keys: %s\n", rep.ReceiptKeysSource)
+	case "reconcile":
+		w("Mode:   reconcile a registry with its decision log\n")
+		w("Receipt keys: %s\n", rep.ReceiptKeysSource)
 	}
 	w("\n")
 	for _, line := range rep.Log {
@@ -272,6 +350,29 @@ func Human(rep *verify.Report) string {
 		if rep.Bundle.RedactedEvents > 0 {
 			w("Redactions: %d payload(s) were destroyed by the tenant, each named by an authenticated declaration in this bundle; their hashes are preserved and the chain is intact.\n", rep.Bundle.RedactedEvents)
 		}
+	}
+
+	if rep.Mode == "receipt" && rep.Receipt != nil {
+		rc := rep.Receipt
+		w("\nReceipt: outcome %s, stream %s, received %s, seal by %s; records named: %s.\n",
+			orDash(rc.Outcome), orDash(rc.Stream), orDash(rc.ReceivedAt), orDash(rc.SealBy), strings.ReplaceAll(rc.Subject, "_", " "))
+	}
+	if rep.Mode == "reconcile" && rep.Counts != nil {
+		c := rep.Counts
+		w("\nDecisions: %d", c.Decisions)
+		for _, k := range c.Outcomes.Keys {
+			w("  %s %d", k, c.Outcomes.Values[k])
+		}
+		w("\n")
+		for _, cred := range c.Credentials.Keys {
+			w("  credential %s:", cred)
+			m := c.Credentials.Values[cred]
+			for _, k := range m.Keys {
+				w(" %s %d", k, m.Values[k])
+			}
+			w("\n")
+		}
+		w("Receipts checked: %d\n", rep.ReceiptsChecked)
 	}
 
 	w("\n")
@@ -309,4 +410,18 @@ func Human(rep *verify.Report) string {
 		}
 	}
 	return b.String()
+}
+
+func reasonText(reason *string) string {
+	if reason == nil {
+		return "a bundle check"
+	}
+	return *reason
+}
+
+func orDash(s *string) string {
+	if s == nil {
+		return "-"
+	}
+	return *s
 }
