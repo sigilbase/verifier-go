@@ -119,7 +119,7 @@
             ]
         },
         "counts": {
-            "description": "A count per name; PHP encodes an empty map as an empty array.",
+            "description": "A count per name. An empty map is written as an empty object.",
             "oneOf": [
                 { "type": "object", "additionalProperties": { "type": "integer" } },
                 { "type": "array", "maxItems": 0 }
