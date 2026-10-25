@@ -3765,13 +3765,13 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
             $eventResource = $event->resource ?? null;
             $isSigning = is_string($eventResource) && str_starts_with($eventResource, 'signing:');
 
-            $sequenceKey = $event->seq ?? -1;
+            // Only an integer seq can be wanted: a float, string or larger
+            // number used as a key would raise a deprecation or warning
+            // ahead of the --json document, and never reaches
+            // $eventBySequence below anyway.
+            $sequenceKey = $event->seq ?? null;
 
-            if (is_array($sequenceKey) || is_object($sequenceKey)) {
-                $sequenceKey = -1;
-            }
-
-            if (! $isSigning && ! isset($wantedSequences[$sequenceKey])) {
+            if (! $isSigning && ! (is_int($sequenceKey) && isset($wantedSequences[$sequenceKey]))) {
                 continue;
             }
 

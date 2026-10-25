@@ -204,46 +204,6 @@ func arrayCast(v *cjson.Value) []*cjson.Value {
 	return []*cjson.Value{v}
 }
 
-// arrayKey is the integer key PHP would use when a decoded value indexes
-// an array: an int as it is, a canonical decimal string as its number, a
-// float truncated, a bool as 0 or 1. Null, other strings, arrays and
-// objects never reach an integer key.
-func arrayKey(v *cjson.Value) (int64, bool) {
-	if v == nil {
-		return 0, false
-	}
-	switch v.Kind {
-	case cjson.Int:
-		return v.Int, true
-	case cjson.Bool:
-		if v.Bool {
-			return 1, true
-		}
-		return 0, true
-	case cjson.Float:
-		if math.IsNaN(v.Float) || math.IsInf(v.Float, 0) {
-			return 0, false
-		}
-		return phpcompat.FloatToInt(v.Float), true
-	case cjson.String:
-		s := v.Str
-		if s == "" || s == "-" || (len(s) > 1 && s[0] == '0') || (len(s) > 2 && s[0] == '-' && s[1] == '0') || s == "-0" {
-			return 0, false
-		}
-		n, err := strconv.ParseInt(s, 10, 64)
-		if err != nil {
-			return 0, false
-		}
-		for i, c := range s {
-			if !(c >= '0' && c <= '9') && !(i == 0 && c == '-') {
-				return 0, false
-			}
-		}
-		return n, true
-	}
-	return 0, false
-}
-
 // lower is PHP 8's strtolower: ASCII letters only. strings.ToLower would
 // also fold non-ASCII letters, which matters where the verifier compares
 // email addresses.

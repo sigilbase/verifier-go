@@ -719,6 +719,17 @@
                 "redactions": "pass"
             }
         },
+        "sigilsign-float-seq": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
         "sigilsign-link-action": {
             "result": "fail",
             "exit": 1,

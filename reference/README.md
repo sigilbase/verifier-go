@@ -25,8 +25,4 @@ must be exact at matching versions. `tools/check-upstream.sh <ref>` clones
 the verifier repository at a tag or commit and diffs every mirrored file;
 run it before tagging a release, and whenever the corpus changes upstream.
 
-The copy here is the 1.8.0 candidate of `verify.php` from the verifier
-repository's `registry-receipts` branch, which adds format 1.7 and the
-`--receipt` and `--reconcile` modes. Until that branch is merged,
-`check-upstream.sh` against `main` there will report differences; against
-`registry-receipts` it reports none.
+The copy here is `verify.php` 1.8.1, the verifier repository's `v1.8.1`.
