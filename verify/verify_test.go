@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sigilbase/verifier-go/internal/cjson"
 	"github.com/sigilbase/verifier-go/internal/difftest"
 	"github.com/sigilbase/verifier-go/keys"
 )
@@ -58,6 +59,134 @@ func TestCorpusConsistencyExpectations(t *testing.T) {
 	}
 }
 
+// The receipts and reconcile cases (format 1.7, verifier 1.8) run with the
+// command lines the corpus note describes, and must produce the recorded
+// verdict, reason, subject, decision count and receipts checked.
+func TestCorpusReceiptExpectations(t *testing.T) {
+	corpus, err := difftest.LoadCorpus("../corpus/expected.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus.Receipts) == 0 {
+		t.Fatal("expected.json has no receipts cases")
+	}
+	for _, name := range corpus.SortedReceipts() {
+		rc := corpus.Receipts[name]
+		rep := runCorpusArgs(t, corpus.ReceiptArgs(name))
+		checkReport(t, "receipt "+name, rep, rc.Expected())
+		checkReason(t, "receipt "+name, rep, rc.Reason)
+		if rep.Receipt == nil || rep.Receipt.Subject != rc.Subject {
+			t.Errorf("receipt %s: subject %+v, expected %q", name, rep.Receipt, rc.Subject)
+		}
+	}
+}
+
+func TestCorpusReconcileExpectations(t *testing.T) {
+	corpus, err := difftest.LoadCorpus("../corpus/expected.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus.Reconcile) == 0 {
+		t.Fatal("expected.json has no reconcile cases")
+	}
+	for _, name := range corpus.SortedReconcile() {
+		rc := corpus.Reconcile[name]
+		rep := runCorpusArgs(t, corpus.ReconcileArgs(name))
+		checkReport(t, "reconcile "+name, rep, rc.Expected())
+		checkReason(t, "reconcile "+name, rep, rc.Reason)
+		if rep.Counts == nil || rep.Counts.Decisions != rc.Decisions {
+			t.Errorf("reconcile %s: counts %+v, expected %d decisions", name, rep.Counts, rc.Decisions)
+		}
+		if int64(rep.ReceiptsChecked) != rc.ReceiptsChecked {
+			t.Errorf("reconcile %s: %d receipts checked, expected %d", name, rep.ReceiptsChecked, rc.ReceiptsChecked)
+		}
+	}
+}
+
+// The counts keep the order in which outcomes and credentials first
+// appear in the log, and an empty map is written as {} (verify.php casts
+// each to an object).
+func TestReconcileCountsDocument(t *testing.T) {
+	corpus, err := difftest.LoadCorpus("../corpus/expected.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := runCorpusArgs(t, corpus.ReconcileArgs("valid"))
+	doc, err := rep.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := difftest.KeyOrder(string(doc), "counts", "outcomes"); strings.Join(got, ",") != "accepted,replay,conflict,invalid,refused_early,refused_late" {
+		t.Errorf("outcomes in order %v", got)
+	}
+	if got := difftest.KeyOrder(string(doc), "counts", "credentials"); strings.Join(got, ",") != "sgb_filer000000001,sgb_second00000002" {
+		t.Errorf("credentials in order %v", got)
+	}
+	empty := runCorpusArgs(t, corpus.ReconcileArgs("swapped-bundles"))
+	doc, err = empty.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact := strings.Join(strings.Fields(string(doc)), "")
+	if !strings.Contains(compact, `"counts":{"decisions":0,"outcomes":{},"credentials":{}}`) {
+		t.Errorf("empty counts written as %s", compact)
+	}
+}
+
+func checkReason(t *testing.T, name string, rep *Report, want *string) {
+	t.Helper()
+	switch {
+	case want == nil && rep.Reason != nil:
+		t.Errorf("%s: reason %s, expected null", name, *rep.Reason)
+	case want != nil && (rep.Reason == nil || *rep.Reason != *want):
+		t.Errorf("%s: reason %v, expected %s", name, rep.Reason, *want)
+	}
+}
+
+// runCorpusArgs runs a receipts or reconcile command line from the corpus
+// through the library, resolving paths against the repository root.
+func runCorpusArgs(t *testing.T, args []string) *Report {
+	t.Helper()
+	var opts []string
+	var receipt, receiptsDir *string
+	reconcile := false
+	var targets []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--receipt":
+			i++
+			p := "../" + args[i]
+			receipt = &p
+		case "--receipts":
+			i++
+			p := "../" + args[i]
+			receiptsDir = &p
+		case "--reconcile":
+			reconcile = true
+		case "--keys", "--tsa-roots", "--receipt-keys":
+			opts = append(opts, args[i], args[i+1])
+			i++
+		default:
+			if strings.HasPrefix(args[i], "--") {
+				opts = append(opts, args[i])
+			} else {
+				targets = append(targets, "../"+args[i])
+			}
+		}
+	}
+	o, _ := optionsFromArgs(t, opts, "")
+	if reconcile {
+		if len(targets) != 2 {
+			t.Fatalf("reconcile case with %d bundles", len(targets))
+		}
+		return Reconcile(targets[0], targets[1], receiptsDir, o)
+	}
+	if receipt == nil {
+		t.Fatal("receipts case without --receipt")
+	}
+	return Receipt(*receipt, targets, o)
+}
+
 // optionsFromArgs turns a fixture's recorded command-line options into
 // Options, resolving file arguments relative to the repository root.
 func optionsFromArgs(t *testing.T, args []string, bundlePath string) (Options, string) {
@@ -65,6 +194,14 @@ func optionsFromArgs(t *testing.T, args []string, bundlePath string) (Options, s
 	var opts Options
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--receipt-keys":
+			i++
+			set, err := LoadReceiptKeyFile("../" + args[i])
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts.ReceiptKeys = set
+			opts.ReceiptKeysSource = "--receipt-keys " + args[i]
 		case "--keys":
 			i++
 			set, err := LoadKeyFile("../" + args[i])
@@ -141,7 +278,7 @@ func TestEmbeddedRootsConfirmProductionAnchors(t *testing.T) {
 // for byte: "which keys does this verifier trust" has one answer per
 // release, and tools/compile-keys.php holds verify.php to the same files.
 func TestEmbeddedKeyFilesMatchRepository(t *testing.T) {
-	for name, embedded := range map[string][]byte{"sigilbase.json": keys.SigilbaseJSON, "tsa-roots.pem": keys.TSARootsPEM} {
+	for name, embedded := range map[string][]byte{"sigilbase.json": keys.SigilbaseJSON, "tsa-roots.pem": keys.TSARootsPEM, "receipt-keys.json": keys.ReceiptKeysJSON} {
 		onDisk, err := os.ReadFile(filepath.Join("..", "keys", name))
 		if err != nil {
 			t.Fatal(err)
@@ -159,6 +296,42 @@ func TestEmbeddedKeyFilesMatchRepository(t *testing.T) {
 		if !ok || len(raw) != 32 {
 			t.Errorf("embedded key %q is not a 32-byte hex public key", k.publicKey)
 		}
+	}
+	// Every embedded receipt key's key_id is the SHA-256 of its key, or the
+	// set would not load at all (EmbeddedReceiptKeys panics).
+	_ = EmbeddedReceiptKeys()
+}
+
+// A --receipt-keys entry whose key_id is not the SHA-256 of its public key
+// is an error in the file, as is a file without a keys list; an empty list
+// is a valid (empty) set.
+func TestReceiptKeyFileRules(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	const pk = "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025"
+	const id = "dac073e0123bdea59dd9b3bda9cf6037f63aca82627d7abcd5c4ac29dd74003e"
+	if _, err := LoadReceiptKeyFile(write("bad.json", `{"keys":[{"key_id":"`+strings.Repeat("0", 64)+`","public_key":"`+pk+`"}]}`)); err == nil || !strings.Contains(err.Error(), "is not the SHA-256 of its public_key") {
+		t.Errorf("mismatched key_id: %v", err)
+	}
+	if _, err := LoadReceiptKeyFile(write("none.json", `{"nokeys":[]}`)); err == nil || !strings.Contains(err.Error(), `has no "keys" list`) {
+		t.Errorf("no keys list: %v", err)
+	}
+	if _, err := LoadReceiptKeyFile(filepath.Join(dir, "missing.json")); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("missing file: %v", err)
+	}
+	set, err := LoadReceiptKeyFile(write("empty.json", `{"keys":[]}`))
+	if err != nil || set.Len() != 0 {
+		t.Errorf("empty list: %v %v", set, err)
+	}
+	set, err = LoadReceiptKeyFile(write("upper.json", `{"keys":[{"key_id":"`+strings.ToUpper(id)+`","public_key":"`+strings.ToUpper(pk)+`"}]}`))
+	if err != nil || set.Len() != 1 || set.keys[id].publicKey != pk {
+		t.Errorf("upper-case hex: %v %v", set, err)
 	}
 }
 
@@ -273,5 +446,138 @@ func TestPHPHelpers(t *testing.T) {
 	}
 	if phpFloatString(1e30) != "1.0E+30" || phpFloatString(1.5) != "1.5" || phpFloatString(math.Copysign(0, -1)) != "-0" || phpFloatString(1.0) != "1" || phpFloatString(0.1) != "0.1" {
 		t.Errorf("float strings: %s %s %s %s %s", phpFloatString(1e30), phpFloatString(1.5), phpFloatString(math.Copysign(0, -1)), phpFloatString(1.0), phpFloatString(0.1))
+	}
+}
+
+// Receipt shape (verify.php 1.8.0): hashes match exactly, with no trailing
+// newline, and the optional fields are checked when present.
+func TestReceiptShapeExactAndOptionalFields(t *testing.T) {
+	data, err := os.ReadFile("../corpus/registry/receipts/06-conflict.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := cjson.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := doc.Field("body")
+	if p := receiptShapeProblems(body); len(p) != 0 {
+		t.Fatalf("corpus receipt has shape problems: %v", p)
+	}
+	for field, value := range map[string]*cjson.Value{
+		"key_id":          stringValue(body.Field("key_id").Str + "\n"),
+		"request_digest":  stringValue(body.Field("request_digest").Str + "\n"),
+		"policy_hash":     stringValue("sha256:nothex"),
+		"reasons":         {Kind: cjson.Array, Arr: []*cjson.Value{intValue(1)}},
+		"idempotency_key": intValue(5),
+	} {
+		mutated := &cjson.Value{Kind: cjson.Object, Obj: cjson.NewObject()}
+		for i := 0; i < body.Obj.Len(); i++ {
+			k, v := body.Obj.At(i)
+			mutated.Obj.Set(k, v)
+		}
+		mutated.Obj.Set(field, value)
+		if p := receiptShapeProblems(mutated); len(p) != 1 || !strings.HasPrefix(p[0], field) {
+			t.Errorf("%s: problems %v", field, p)
+		}
+	}
+}
+
+// --receipts lists regular *.json files only, without a leading dot, in
+// byte order; a subdirectory named *.json is skipped.
+func TestReceiptFilesListing(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"b.json", "A.json", ".hidden.json", "c.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "sub.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := receiptFiles(dir + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, p := range paths {
+		names = append(names, filepath.Base(p))
+	}
+	if strings.Join(names, ",") != "A.json,b.json" {
+		t.Errorf("listed %v", names)
+	}
+}
+
+// A trusted anchor dated after a receipt's seal deadline turns a record
+// past the log's range from "may be later" into "missing" (verify.php's
+// testATrustedAnchorAfterASealDeadlineTurnsAMissingRecordIntoAFailure).
+func TestATrustedAnchorAfterASealDeadlineTurnsAMissingRecordIntoAFailure(t *testing.T) {
+	root := "../corpus/registry/"
+	receipt := root + "receipts/13-refused_late.json"
+	data, err := os.ReadFile(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := cjson.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealBy, ok := parseRFC3339Value(doc.Field("body").Field("seal_by"))
+	if !ok {
+		t.Fatal("receipt seal_by does not parse")
+	}
+	keys, err := LoadReceiptKeyFile(root + "receipt-keys.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(anchoredAt *int64) []string {
+		r := newRun(&Options{ReceiptKeys: keys, ReceiptKeysSource: "test"})
+		registry, herr := loadVerifiedBundle(root + "truncated-tail-registry.zip")
+		if herr != nil {
+			t.Fatal(herr.Message)
+		}
+		log, herr := loadVerifiedBundle(root + "truncated-tail-log.zip")
+		if herr != nil {
+			t.Fatal(herr.Message)
+		}
+		log.anchoredAt = anchoredAt
+		if _, _, herr := r.reconcileRegistry(registry, log, []string{receipt}); herr != nil {
+			t.Fatal(herr.Message)
+		}
+		reason := ""
+		if rr := r.runReason(); rr != nil {
+			reason = *rr
+		}
+		return []string{reason, r.results.Get(ResultContent), r.results.Get(ResultScope)}
+	}
+
+	after := sealBy.Unix() + sealGraceSeconds + 60
+	before := after - 120
+	for _, c := range []struct {
+		anchoredAt *int64
+		want       string
+	}{
+		{nil, "RECEIPT_NOT_LOGGED pass unconfirmed"},
+		{&before, "RECEIPT_NOT_LOGGED pass unconfirmed"},
+		{&after, "RECEIPT_NOT_LOGGED fail pass"},
+	} {
+		if got := strings.Join(run(c.anchoredAt), " "); got != c.want {
+			t.Errorf("anchored_at %v: got %s, want %s", c.anchoredAt, got, c.want)
+		}
+	}
+}
+
+// msd_seconds must be exactly the integer 900, compared as PHP's !== does
+// on the decoded value: 900.0, 9e2 and "900" are not it.
+func TestMSDSecondsIsStrictlyTheInteger900(t *testing.T) {
+	for literal, want := range map[string]bool{`900`: true, `900.0`: false, `9e2`: false, `"900"`: false, `901`: false, `null`: false} {
+		v, err := cjson.Parse([]byte(`{"msd_seconds":` + literal + `}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := intIs(v.Field("msd_seconds"), msdSecondsRequired); got != want {
+			t.Errorf("msd_seconds %s: accepted %v, want %v", literal, got, want)
+		}
 	}
 }

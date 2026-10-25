@@ -23,6 +23,7 @@ var knownFormats = []string{
 	"sigilbase-evidence/1.4",
 	"sigilbase-evidence/1.5",
 	"sigilbase-evidence/1.6",
+	"sigilbase-evidence/1.7",
 }
 
 const zeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -35,6 +36,10 @@ type bundleResult struct {
 	eventCount      int64
 	checkpointCount int64
 	redactedCount   int64
+	// latestAnchorAt is verify_bundle's latest_anchor_at: the latest
+	// genTime of an anchor that verified against trusted roots, nil when
+	// none did.
+	latestAnchorAt *int64
 	// collection is what the format 1.6 collection check counted, nil
 	// when the bundle holds no collection record.
 	collection *CollectionSummary
@@ -631,7 +636,8 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 
 	// ---- anchors.json (format 1.1, optional) --------------------------------
 
-	if herr := r.checkAnchors(b, skipAnchors, checkpointHashes); herr != nil {
+	latestAnchorAt, herr := r.checkAnchors(b, skipAnchors, checkpointHashes)
+	if herr != nil {
 		return nil, herr
 	}
 
@@ -647,10 +653,10 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 		return nil, herr
 	}
 
-	// ---- collection records (format 1.6) --------------------------------------
+	// ---- collection records (format 1.6; 1.7 is strictly additive and keeps them)
 
 	var collection *CollectionSummary
-	if format == "sigilbase-evidence/1.6" {
+	if format == "sigilbase-evidence/1.6" || format == "sigilbase-evidence/1.7" {
 		summary, herr := r.checkCollectionRecords(b, rangeFrom)
 		if herr != nil {
 			return nil, herr
@@ -671,6 +677,7 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 		eventCount:      eventCount,
 		checkpointCount: int64(len(checkpoints.Arr)),
 		redactedCount:   redactedCount,
+		latestAnchorAt:  latestAnchorAt,
 		collection:      collection,
 		cumulativeRoots: cumulativeRootAt,
 	}

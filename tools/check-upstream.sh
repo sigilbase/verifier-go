@@ -29,6 +29,7 @@ compare corpus "$work/upstream/corpus"
 compare vectors "$work/upstream/vectors"
 compare keys/sigilbase.json "$work/upstream/keys/sigilbase.json"
 compare keys/tsa-roots.pem "$work/upstream/keys/tsa-roots.pem"
+compare keys/receipt-keys.json "$work/upstream/keys/receipt-keys.json"
 compare result.schema.json "$work/upstream/result.schema.json"
 compare reference/verify.php "$work/upstream/verify.php"
 

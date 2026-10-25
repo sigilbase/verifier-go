@@ -122,7 +122,7 @@ declare(strict_types=1);
  * verifier/format compatibility table. This file makes no network calls
  * of any kind.
  */
-const VERIFIER_VERSION = '1.7.0';
+const VERIFIER_VERSION = '1.8.0';
 
 /**
  * How this implementation names itself in a report, beside its version and
@@ -288,6 +288,16 @@ $failures = [];         // every FAIL line, verbatim
 $notes = [];            // every NOTE line, verbatim
 $bundleHashes = [];     // path => sha256 of each bundle FILE argument (dirs are null)
 
+/**
+ * Receipt keys (FORMAT.md, "Receipts"), compiled from keys/receipt-keys.json
+ * by tools/compile-keys.php: the keys whose signatures make an ingress
+ * receipt Sigilbase's own statement. A receipt names its key by key_id, the
+ * SHA-256 of the raw public key, which the compiler and --receipt-keys both
+ * recompute. --receipt-keys <file> replaces this set entirely.
+ */
+const TRUSTED_RECEIPT_KEYS = [
+];
+
 const EXIT_PASS = 0;
 const EXIT_FAIL = 1;
 const EXIT_ERROR = 2;
@@ -322,6 +332,14 @@ $keySources = [];
 /** The signing keys trusted for this run; --keys replaces it wholesale. */
 $trustedSet = TRUSTED_SIGNING_KEYS;
 $trustedSetSource = 'built-in trusted set';
+
+/** The receipt keys trusted for this run; --receipt-keys replaces them. */
+$trustedReceiptKeys = receipt_key_map(TRUSTED_RECEIPT_KEYS, 'the built-in receipt key set');
+$trustedReceiptKeysSource = 'built-in trusted set';
+
+/** The reason codes of the first failed, and the first unconfirmed, receipt or registry check (--receipt, --reconcile). */
+$reason = null;
+$unconfirmedReason = null;
 
 /** Timestamp trust roots for this run; --tsa-roots replaces them. */
 $trustedTsaRoots = TRUSTED_TSA_ROOTS;
@@ -2006,7 +2024,7 @@ function check_declarations(
     // payload in one cannot be checked against anything. Saying so plainly
     // matters: the bundle is not necessarily wrong, it is unverifiable,
     // and the fix is to export it again.
-    if (! in_array($format, ['sigilbase-evidence/1.5', 'sigilbase-evidence/1.6'], true)) {
+    if (! in_array($format, ['sigilbase-evidence/1.5', 'sigilbase-evidence/1.6', 'sigilbase-evidence/1.7'], true)) {
         report(
             "this bundle is {$format} and carries {$count} absent payload(s). Formats before "
             .'sigilbase-evidence/1.5 do not carry the declarations that destroyed them, so the absences cannot be '
@@ -2998,7 +3016,7 @@ function check_collection_records(string $dir, string $eventsPath, int $rangeFro
  * Fully verify one bundle. Prints progress; failures land in the global
  * list AND the returned array.
  *
- * @return array{stream_id: string, range_from: int, range_to: int, event_count: int, checkpoint_count: int, redacted_count: int, cumulative_roots: array<int, string>, leaves: list<string>, failures: list<string>}
+ * @return array{stream_id: string, range_from: int, range_to: int, event_count: int, checkpoint_count: int, latest_anchor_at: ?int, redacted_count: int, cumulative_roots: array<int, string>, leaves: list<string>, failures: list<string>}
  */
 /**
  * @param  bool  $collectLeaves  keep every entry hash as raw bytes. Only
@@ -3027,6 +3045,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         'sigilbase-evidence/1.4',
         'sigilbase-evidence/1.5',
         'sigilbase-evidence/1.6',
+        'sigilbase-evidence/1.7',
     ];
 
     if (! in_array($format, $knownFormats, true)) {
@@ -3548,6 +3567,11 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
 
     $anchorsPath = $dir.DIRECTORY_SEPARATOR.'anchors.json';
 
+    // The latest genTime of an anchor that verified against roots this
+    // verifier trusts: the bundle was exported after it, and no operator
+    // can backdate it.
+    $latestAnchorAt = null;
+
     if (! is_file($anchorsPath)) {
         // No anchors at all: nothing was checked, which is not the same as
         // checked and sound.
@@ -3609,8 +3633,14 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                 $trustedPem = $trustedTsaRoots !== '' ? $trustedTsaRoots : null;
                 $caPem = $trustedPem ?? $bundlePem;
 
-                foreach (anchor_validate($token, (string) hex2bin($checkpointHash), $caPem) as $problem) {
+                $anchorProblems = anchor_validate($token, (string) hex2bin($checkpointHash), $caPem);
+
+                foreach ($anchorProblems as $problem) {
                     report("{$label}: {$problem}", RESULT_TIMESTAMPS);
+                }
+
+                if ($anchorProblems === [] && $trustedPem !== null) {
+                    $latestAnchorAt = max($latestAnchorAt ?? $token['gen_time'], $token['gen_time']);
                 }
 
                 if ($trustedPem === null && $bundlePem !== null) {
@@ -3980,9 +4010,10 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
 
     // A connection's receipt stream: receipt chains, declared gaps and
     // settlement records, checked against each other and against
-    // connection.json. Only format 1.6 defines them; an earlier format
-    // carrying such events is verified as events alone.
-    $collection = $format === 'sigilbase-evidence/1.6'
+    // connection.json. Format 1.6 defines them (and 1.7, strictly additive,
+    // keeps them); an earlier format carrying such events is verified as
+    // events alone.
+    $collection = in_array($format, ['sigilbase-evidence/1.6', 'sigilbase-evidence/1.7'], true)
         ? check_collection_records($dir, $eventsPath, $rangeFrom)
         : null;
 
@@ -4069,6 +4100,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         'range_to' => $rangeTo,
         'event_count' => $eventCount,
         'checkpoint_count' => count($checkpoints),
+        'latest_anchor_at' => $latestAnchorAt,
         'redacted_count' => $redactedCount,
         'collection' => $collection,
         // Cumulative RFC 6962 roots, captured as the events streamed past,
@@ -4080,6 +4112,1156 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         'leaves' => $leaves,
         'failures' => array_slice($failures, $before),
     ];
+}
+
+// ---------------------------------------------------------------------------
+// Receipts and registries (format 1.7, verifier 1.8)
+// ---------------------------------------------------------------------------
+
+const RECEIPT_VERSION = 'sigilbase-receipt/1';
+
+/** A window closed more than this long before the log's last record must have its close record. */
+const WINDOW_CLOSE_GRACE_SECONDS = 300;
+
+/**
+ * A checkpoint signed by its deadline commits moments later, and a timestamp
+ * authority's clock may run a little ahead: a record is held missing from a
+ * bundle only when its seal deadline came this long before the bundle was
+ * known complete. The application's own seal watch allows the same.
+ */
+const SEAL_GRACE_SECONDS = 120;
+
+/**
+ * Every registry policy's msd_seconds: the platform's maximum seal delay,
+ * the offset every receipt's seal_by is signed with. Both seal bounds in
+ * reconcile read it from the policy, so a policy may not name another.
+ */
+const MSD_SECONDS = 900;
+
+/** The notice period a policy under "notice" may ask for: an hour to a hundred years. */
+const MIN_NOTICE_SECONDS = 3600;
+const MAX_NOTICE_SECONDS = 3155760000;
+
+function notice_in_bounds(mixed $notice): bool
+{
+    return is_int($notice) && $notice >= MIN_NOTICE_SECONDS && $notice <= MAX_NOTICE_SECONDS;
+}
+
+const REGISTRY_OUTCOMES = [
+    'accepted', 'replay', 'conflict', 'invalid', 'refused_early', 'refused_late',
+    'refused_scope', 'refused_paused', 'refused_archived', 'throttled',
+];
+
+/**
+ * Record the reason code of a failed or unconfirmed receipt or registry
+ * check. The run's `reason` is the first failure's code, or, when nothing
+ * failed, the first unconfirmed check's (run_reason()).
+ */
+function set_reason(string $code, bool $unconfirmed = false): void
+{
+    global $reason, $unconfirmedReason;
+
+    if ($unconfirmed) {
+        $unconfirmedReason ??= $code;
+    } else {
+        $reason ??= $code;
+    }
+}
+
+function run_reason(): ?string
+{
+    global $reason, $unconfirmedReason;
+
+    return $reason ?? $unconfirmedReason;
+}
+
+function reason_fail(string $code, string $message, string $result = RESULT_CONTENT): void
+{
+    set_reason($code);
+    report("{$code}: {$message}", $result);
+}
+
+/**
+ * Load a receipt key set in the shape of /api/v1/receipt-keys, for
+ * --receipt-keys. Each id must be the SHA-256 of its key: a receipt names
+ * its key by that hash, so a mismatched entry could vouch for another key.
+ *
+ * @return array<string, array{public_key: string, created_at: mixed, retired_at: mixed}>
+ */
+function load_receipt_key_file(string $path): array
+{
+    if (! is_file($path)) {
+        fail_hard("--receipt-keys file [{$path}] does not exist", EXIT_ERROR);
+    }
+
+    $decoded = json_decode((string) file_get_contents($path), true);
+    $keys = is_array($decoded) ? ($decoded['keys'] ?? null) : null;
+
+    if (! is_array($keys)) {
+        fail_hard("--receipt-keys file [{$path}] has no \"keys\" list", EXIT_ERROR);
+    }
+
+    return receipt_key_map($keys, "--receipt-keys file [{$path}]");
+}
+
+/**
+ * @param  array<mixed>  $keys
+ * @return array<string, array{public_key: string, created_at: mixed, retired_at: mixed}>
+ */
+function receipt_key_map(array $keys, string $source): array
+{
+    $map = [];
+
+    foreach ($keys as $key) {
+        $publicKey = is_array($key) ? ($key['public_key'] ?? null) : null;
+        $keyId = is_array($key) ? ($key['key_id'] ?? null) : null;
+        $raw = is_string($publicKey) && preg_match('/\A[0-9a-fA-F]{64}\z/', $publicKey) === 1 ? hex2bin($publicKey) : false;
+
+        if (! is_string($keyId) || $raw === false || ! hash_equals(hash('sha256', $raw), strtolower($keyId))) {
+            fail_hard("{$source} has an entry whose key_id is not the SHA-256 of its public_key", EXIT_ERROR);
+        }
+
+        $map[strtolower($keyId)] = [
+            'public_key' => strtolower((string) $publicKey),
+            'created_at' => $key['created_at'] ?? null,
+            'retired_at' => $key['retired_at'] ?? null,
+        ];
+    }
+
+    return $map;
+}
+
+/**
+ * Read a receipt document: {body, signature}, or the API's envelope
+ * {receipt: {body, signature}, receipt_pending}. Null, with a failure
+ * reported, when it is neither.
+ *
+ * @return array{body: stdClass, signature: string}|null
+ */
+function read_receipt_document(string $path): ?array
+{
+    if (! is_file($path)) {
+        fail_hard("receipt [{$path}] does not exist", EXIT_ERROR);
+    }
+
+    $decoded = json_decode((string) file_get_contents($path), false);
+
+    if ($decoded instanceof stdClass && ($decoded->receipt ?? null) instanceof stdClass) {
+        $decoded = $decoded->receipt;
+    }
+
+    if (! $decoded instanceof stdClass || ! ($decoded->body ?? null) instanceof stdClass || ! is_string($decoded->signature ?? null)) {
+        reason_fail('RECEIPT_SHAPE', "receipt [{$path}] is not a {body, signature} document");
+
+        return null;
+    }
+
+    return ['body' => $decoded->body, 'signature' => $decoded->signature];
+}
+
+/**
+ * The request digest of an event (FORMAT.md, "Receipts"): its fields, its
+ * payload hash and the commitment key it was accepted for.
+ */
+function request_digest(stdClass $event, ?string $commitmentKey): string
+{
+    return 'sha256:'.hash('sha256', canonical_encode((object) [
+        'occurred_at' => bundle_text($event->occurred_at ?? null),
+        'actor' => bundle_text($event->actor ?? null),
+        'action' => bundle_text($event->action ?? null),
+        'resource' => is_string($event->resource ?? null) ? $event->resource : null,
+        'payload_sha256' => bundle_text($event->payload_hash ?? null),
+        'commitment_key' => $commitmentKey,
+    ]));
+}
+
+function is_digest(mixed $value): bool
+{
+    return is_string($value) && preg_match('/\Asha256:[0-9a-f]{64}\z/', $value) === 1;
+}
+
+/**
+ * The shape problems of a receipt body, in field order.
+ *
+ * @return list<string>
+ */
+function receipt_shape_problems(stdClass $body): array
+{
+    $problems = [];
+
+    if (($body->v ?? null) !== RECEIPT_VERSION) {
+        $problems[] = 'v is not '.RECEIPT_VERSION;
+    }
+
+    foreach (['tenant', 'stream', 'credential'] as $field) {
+        if (! is_string($body->{$field} ?? null) || $body->{$field} === '') {
+            $problems[] = "{$field} is not a non-empty string";
+        }
+    }
+
+    if (! in_array($body->outcome ?? null, REGISTRY_OUTCOMES, true)) {
+        $problems[] = 'outcome is not one the format names';
+    }
+
+    if (! is_digest($body->request_digest ?? null)) {
+        $problems[] = 'request_digest is not a sha256: digest';
+    }
+
+    if (! in_array($body->digest_kind ?? null, ['canonical', 'raw'], true)) {
+        $problems[] = 'digest_kind is neither canonical nor raw';
+    }
+
+    if (! is_string($body->key_id ?? null) || preg_match('/\A[0-9a-f]{64}\z/', $body->key_id) !== 1) {
+        $problems[] = 'key_id is not 64 hex characters';
+    }
+
+    $accepted = $body->accepted ?? null;
+
+    if (! property_exists($body, 'accepted')) {
+        $problems[] = 'accepted is missing';
+    } elseif ($accepted !== null && (! $accepted instanceof stdClass
+        || ! is_int($accepted->sequence ?? null) || $accepted->sequence < 1
+        || ! is_string($accepted->entry_hash ?? null) || preg_match('/\A[0-9a-f]{64}\z/', $accepted->entry_hash) !== 1
+        || ! is_digest($accepted->request_digest ?? null))) {
+        $problems[] = 'accepted is neither null nor {sequence, entry_hash, request_digest}';
+    }
+
+    if (property_exists($body, 'decision_seq') && (! is_int($body->decision_seq) || $body->decision_seq < 1)) {
+        $problems[] = 'decision_seq is not a positive integer';
+    }
+
+    if (property_exists($body, 'commitment_key') && $body->commitment_key !== null && ! is_string($body->commitment_key)) {
+        $problems[] = 'commitment_key is neither a string nor null';
+    }
+
+    if (property_exists($body, 'idempotency_key') && ! is_string($body->idempotency_key)) {
+        $problems[] = 'idempotency_key is not a string';
+    }
+
+    if (property_exists($body, 'policy_hash') && ! is_digest($body->policy_hash)) {
+        $problems[] = 'policy_hash is not a sha256: digest';
+    }
+
+    if (property_exists($body, 'reasons') && (! is_array($body->reasons) || ! array_is_list($body->reasons) || array_filter($body->reasons, static fn (mixed $reason): bool => ! is_string($reason)) !== [])) {
+        $problems[] = 'reasons is not a list of strings';
+    }
+
+    $receivedAt = parse_rfc3339($body->received_at ?? null);
+    $signedAt = parse_rfc3339($body->signed_at ?? null);
+
+    if ($receivedAt === null || parse_rfc3339($body->seal_by ?? null) === null || $signedAt === null) {
+        $problems[] = 'received_at, seal_by and signed_at are not all RFC 3339 times';
+    } elseif ($signedAt < $receivedAt) {
+        $problems[] = 'signed_at is earlier than received_at';
+    }
+
+    return $problems;
+}
+
+/**
+ * The receipt check (FORMAT.md, "Receipts"): shape, key, signature and the
+ * key's window at signed_at. True when the receipt is the operator's own
+ * signed statement; false when it failed, or when its key is not one this
+ * run trusts (unconfirmed).
+ */
+function check_receipt(stdClass $body, string $signature, string $label): bool
+{
+    global $trustedReceiptKeys;
+
+    $problems = receipt_shape_problems($body);
+
+    if ($problems !== []) {
+        reason_fail('RECEIPT_SHAPE', "{$label}: ".implode('; ', $problems));
+
+        return false;
+    }
+
+    $key = $trustedReceiptKeys[$body->key_id] ?? null;
+
+    if ($key === null) {
+        set_reason('RECEIPT_KEY_UNKNOWN', unconfirmed: true);
+        unconfirmed("RECEIPT_KEY_UNKNOWN: {$label} is signed by receipt key {$body->key_id}, which is not in the trusted receipt key set", RESULT_IDENTITY);
+
+        return false;
+    }
+
+    $raw = base64_decode($signature, true);
+
+    try {
+        $valid = is_string($raw) && strlen($raw) === SODIUM_CRYPTO_SIGN_BYTES
+            && sodium_crypto_sign_verify_detached($raw, RECEIPT_VERSION."\n".canonical_encode($body), (string) hex2bin($key['public_key']));
+    } catch (Throwable) {
+        $valid = false;
+    }
+
+    if (! $valid) {
+        reason_fail('RECEIPT_SIGNATURE', "{$label}: the signature does not verify against receipt key {$body->key_id}");
+
+        return false;
+    }
+
+    $signedAt = parse_rfc3339($body->signed_at);
+    $createdAt = $key['created_at'] === null ? null : parse_rfc3339($key['created_at']);
+    $retiredAt = $key['retired_at'] === null ? null : parse_rfc3339($key['retired_at']);
+
+    if (($key['created_at'] !== null && ($createdAt === null || $signedAt < $createdAt))
+        || ($key['retired_at'] !== null && ($retiredAt === null || $signedAt >= $retiredAt))) {
+        reason_fail('RECEIPT_KEY_WINDOW', "{$label}: signed at {$body->signed_at}, outside receipt key {$body->key_id}'s active window", RESULT_IDENTITY);
+
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * A verified bundle, read back for the receipt and registry checks: its
+ * manifest, its events by sequence, and its checkpoints' ranges and times.
+ * Called only after verify_bundle() passed it, so the events are the
+ * authenticated ones.
+ *
+ * @return array{manifest: stdClass, events: array<int, stdClass>, checkpoints: list<array{from: int, to: int, created_at: string}>}
+ */
+function load_verified_bundle(string $target): array
+{
+    $bundle = locate_bundle($target);
+    $dir = $bundle['dir'];
+
+    $manifest = json_decode(read_bundle_file($dir, 'manifest.json'), false);
+    $events = [];
+
+    foreach (read_lines($dir.DIRECTORY_SEPARATOR.'events.ndjson') as $line) {
+        if (trim($line) === '') {
+            continue;
+        }
+
+        $event = json_decode($line, false);
+
+        if ($event instanceof stdClass && is_int($event->seq ?? null)) {
+            $events[$event->seq] = $event;
+        }
+    }
+
+    $checkpoints = [];
+    $document = json_decode(read_bundle_file($dir, 'checkpoints.json'), false);
+
+    foreach (bundle_items($document instanceof stdClass ? ($document->checkpoints ?? null) : null) as $checkpoint) {
+        if ($checkpoint instanceof stdClass) {
+            $checkpoints[] = [
+                'from' => bundle_int($checkpoint->from ?? 0),
+                'to' => bundle_int($checkpoint->to ?? 0),
+                'created_at' => bundle_text($checkpoint->created_at ?? ''),
+            ];
+        }
+    }
+
+    cleanup_bundle($bundle['cleanup']);
+
+    return [
+        'manifest' => $manifest instanceof stdClass ? $manifest : new stdClass,
+        'events' => $events,
+        'checkpoints' => $checkpoints,
+    ];
+}
+
+function manifest_public_id(stdClass $manifest): ?string
+{
+    $stream = $manifest->stream ?? null;
+
+    return $stream instanceof stdClass && is_string($stream->public_id ?? null) ? $stream->public_id : null;
+}
+
+function manifest_log_for(stdClass $manifest): ?string
+{
+    $for = $manifest->decision_log_for ?? null;
+
+    return $for instanceof stdClass && is_string($for->public_id ?? null) ? $for->public_id : null;
+}
+
+/**
+ * The seal deadline (FORMAT.md, "--receipt"): the checkpoint covering a
+ * sequence must have been signed no later than seal_by. Null when no
+ * checkpoint in the bundle covers it.
+ *
+ * @param  list<array{from: int, to: int, created_at: string}>  $checkpoints
+ */
+function sealed_by_deadline(array $checkpoints, int $sequence, string $sealBy): ?bool
+{
+    foreach ($checkpoints as $checkpoint) {
+        if ($checkpoint['from'] <= $sequence && $sequence <= $checkpoint['to']) {
+            $createdAt = parse_rfc3339($checkpoint['created_at']);
+            $deadline = parse_rfc3339($sealBy);
+
+            return $createdAt !== null && $deadline !== null && $createdAt <= $deadline;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Whether a decision record says what a receipt says, field for field.
+ *
+ * @return list<string> the fields that differ
+ */
+function decision_record_differences(stdClass $record, stdClass $body): array
+{
+    $payload = $record->payload ?? null;
+    $differences = [];
+
+    if (($record->action ?? null) !== 'ingress.'.$body->outcome) {
+        $differences[] = 'action';
+    }
+
+    if (! $payload instanceof stdClass) {
+        return [...$differences, 'payload'];
+    }
+
+    foreach (['outcome', 'request_digest', 'digest_kind', 'credential'] as $field) {
+        if (($payload->{$field} ?? null) !== ($body->{$field} ?? null)) {
+            $differences[] = $field;
+        }
+    }
+
+    if (($payload->commitment_key ?? null) !== ($body->commitment_key ?? null)) {
+        $differences[] = 'commitment_key';
+    }
+
+    if (($payload->policy_hash ?? null) !== ($body->policy_hash ?? null)) {
+        $differences[] = 'policy_hash';
+    }
+
+    if (bundle_text($record->received_at ?? null) !== $body->received_at) {
+        $differences[] = 'received_at';
+    }
+
+    return $differences;
+}
+
+/**
+ * The --receipt subject checks against the bundles given.
+ *
+ * @param  array{manifest: stdClass, events: array<int, stdClass>, checkpoints: list<array{from: int, to: int, created_at: string}>}|null  $stream
+ * @param  array{manifest: stdClass, events: array<int, stdClass>, checkpoints: list<array{from: int, to: int, created_at: string}>}|null  $log
+ * @return string checked or not_checked
+ */
+function check_receipt_subject(stdClass $body, ?array $stream, ?array $log): string
+{
+    $checked = false;
+    $unchecked = false;
+    $accepted = $body->accepted;
+    $commitmentKey = is_string($body->commitment_key ?? null) ? $body->commitment_key : null;
+
+    // The decision record.
+    if (is_int($body->decision_seq ?? null)) {
+        $record = $log['events'][$body->decision_seq] ?? null;
+
+        if ($log === null || $record === null) {
+            $unchecked = true;
+            note("the decision record at sequence {$body->decision_seq} is not in a bundle given; not checked");
+        } else {
+            $checked = true;
+            $differences = decision_record_differences($record, $body);
+
+            if ($differences !== []) {
+                reason_fail('RECEIPT_SUBJECT', "the decision record at sequence {$body->decision_seq} differs from the receipt in: ".implode(', ', $differences));
+            }
+        }
+    }
+
+    // The accepted event.
+    if ($accepted !== null) {
+        $event = $stream['events'][$accepted->sequence] ?? null;
+
+        if ($stream === null || $event === null) {
+            $unchecked = true;
+            note("the event at sequence {$accepted->sequence} is not in a bundle given; not checked");
+        } else {
+            $checked = true;
+
+            if (bundle_text($event->entry_hash ?? null) !== $accepted->entry_hash) {
+                reason_fail('RECEIPT_SUBJECT', "the event at sequence {$accepted->sequence} does not carry the entry hash the receipt names");
+            } elseif (request_digest($event, $commitmentKey) !== $accepted->request_digest) {
+                reason_fail('RECEIPT_SUBJECT', "the event at sequence {$accepted->sequence} does not have the request digest the receipt names");
+            } elseif ($body->outcome === 'accepted' && bundle_text($event->received_at ?? null) !== $body->received_at) {
+                reason_fail('RECEIPT_SUBJECT', "the accepted event at sequence {$accepted->sequence} was received at a different time from the receipt's");
+            }
+        }
+    }
+
+    // The seal deadline: the accepted event for an acceptance, and for a
+    // standard stream's replay (its seal_by is the original event's); the
+    // decision record for everything a log records, a registry's replay
+    // included.
+    $deadlineOnEvent = $accepted !== null
+        && ($body->outcome === 'accepted' || ($body->outcome === 'replay' && ! is_int($body->decision_seq ?? null)));
+    $view = $deadlineOnEvent ? $stream : $log;
+    $sequence = $deadlineOnEvent ? $accepted->sequence : ($body->decision_seq ?? null);
+
+    if ($view !== null && is_int($sequence) && isset($view['events'][$sequence])) {
+        $sealed = sealed_by_deadline($view['checkpoints'], $sequence, $body->seal_by);
+
+        if ($sealed === false) {
+            reason_fail('MSD_BREACH', "sequence {$sequence} was sealed by a checkpoint signed after seal_by {$body->seal_by}");
+        } elseif ($sealed === null) {
+            $unchecked = true;
+            note("no checkpoint in the bundle seals sequence {$sequence}; the seal deadline is not checked");
+        }
+    }
+
+    return $checked && ! $unchecked ? 'checked' : 'not_checked';
+}
+
+/**
+ * The policies, windows, credentials and decisions of a registry's log,
+ * read in log order, with the reconcile rules that depend on that order
+ * checked as they go (FORMAT.md, "--reconcile").
+ *
+ * @param  array<int, stdClass>  $records
+ * @return array{policies: array<int, array<string, mixed>>, accepted: list<array<string, mixed>>, closes: list<stdClass>, counts: array<string, mixed>, problems: array<string, list<string>>, last_received_at: ?DateTimeImmutable}
+ */
+function read_registry_log(array $records): array
+{
+    $problems = [];
+    $fail = static function (string $code, string $message) use (&$problems): void {
+        $problems[$code][] = $message;
+    };
+
+    $policies = [];
+    $parts = [];
+    $credentials = [];
+    $snapshotParts = [];
+    $accepted = [];
+    $decisions = [];
+    $closes = [];
+    $outcomes = [];
+    $byCredential = [];
+    $lastReceivedAt = null;
+    $status = 'active';
+
+    foreach ($records as $sequence => $record) {
+        $action = bundle_text($record->action ?? null);
+        $payload = $record->payload ?? null;
+        $lastReceivedAt = parse_rfc3339($record->received_at ?? null) ?? $lastReceivedAt;
+
+        // The registry's state as its log tells it: a pause, resume or
+        // archive is recorded under the registry's lock, with the change.
+        $status = match ($action) {
+            'stream.paused' => 'paused',
+            'stream.resumed' => 'active',
+            'stream.archived' => 'archived',
+            default => $status,
+        };
+
+        if (str_starts_with($action, 'ingress.')) {
+            $outcome = substr($action, strlen('ingress.'));
+            $credential = $payload instanceof stdClass ? bundle_text($payload->credential ?? null) : '';
+            $outcomes[$outcome] = ($outcomes[$outcome] ?? 0) + 1;
+            $byCredential[$credential][$outcome] = ($byCredential[$credential][$outcome] ?? 0) + 1;
+        }
+
+        if (! $payload instanceof stdClass) {
+            if (str_starts_with($action, 'ingress.') || str_starts_with($action, 'policy.') || str_starts_with($action, 'credential')) {
+                note("decision record {$sequence} ({$action}) has no payload in this bundle; it is not read");
+            }
+
+            continue;
+        }
+
+        if ($action === 'policy.committed' || $action === 'policy.amended') {
+            $version = $payload->version ?? null;
+
+            if (! is_int($version) || isset($policies[$version])) {
+                $fail('POLICY_HASH', "record {$sequence}: a policy record without a new integer version");
+
+                continue;
+            }
+
+            $policies[$version] = [
+                'sequence' => $sequence,
+                'action' => $action,
+                'recorded_at' => parse_rfc3339($record->received_at ?? null),
+                'hash' => bundle_text($payload->policy_hash ?? null),
+                'effective_at' => parse_rfc3339($payload->effective_at ?? null),
+                'rules' => $payload->policy ?? null,
+                'count' => ($payload->windows ?? null) instanceof stdClass ? ($payload->windows->count ?? null) : null,
+                'parts' => ($payload->windows ?? null) instanceof stdClass ? ($payload->windows->parts ?? null) : null,
+            ];
+            $parts[$version] = [];
+
+            continue;
+        }
+
+        if ($action === 'policy.windows') {
+            $version = $payload->version ?? null;
+
+            if (! is_int($version) || ! isset($policies[$version]) || ($payload->part ?? null) !== count($parts[$version]) + 1) {
+                $fail('POLICY_HASH', "record {$sequence}: a policy.windows record out of order");
+
+                continue;
+            }
+
+            $parts[$version][] = bundle_items($payload->windows ?? null);
+
+            continue;
+        }
+
+        if ($action === 'credentials.snapshot') {
+            foreach (bundle_items($payload->credentials ?? null) as $credential) {
+                if ($credential instanceof stdClass && is_string($credential->credential ?? null)) {
+                    $credentials[$credential->credential] = $credential->expires_at ?? null;
+                }
+            }
+
+            continue;
+        }
+
+        if ($action === 'credential.issued' && is_string($payload->credential ?? null)) {
+            $credentials[$payload->credential] = $payload->expires_at ?? null;
+
+            continue;
+        }
+
+        if (($action === 'credential.revoked' || $action === 'credential.expired') && is_string($payload->credential ?? null)) {
+            unset($credentials[$payload->credential]);
+
+            continue;
+        }
+
+        if ($action === 'window.closed') {
+            $closes[] = (object) ['sequence' => $sequence, 'payload' => $payload];
+
+            continue;
+        }
+
+        if (! str_starts_with($action, 'ingress.')) {
+            continue;
+        }
+
+        $outcome = substr($action, strlen('ingress.'));
+        $credential = bundle_text($payload->credential ?? null);
+
+        $decisions[] = [
+            'sequence' => $sequence,
+            'outcome' => $outcome,
+            'payload' => $payload,
+            'received_at' => parse_rfc3339($record->received_at ?? null),
+            'status' => $status,
+        ];
+
+        if ($outcome !== 'accepted') {
+            continue;
+        }
+
+        $receivedAt = parse_rfc3339($record->received_at ?? null);
+        $expiresAt = $credentials[$credential] ?? null;
+
+        if (! array_key_exists($credential, $credentials)) {
+            $fail('CREDENTIAL_NOT_VALID', "record {$sequence}: accepted from credential [{$credential}], which the log does not show able to submit at that point");
+        } elseif ($expiresAt !== null && (($expiry = parse_rfc3339($expiresAt)) === null || $receivedAt === null || $receivedAt >= $expiry)) {
+            $fail('CREDENTIAL_NOT_VALID', "record {$sequence}: accepted from credential [{$credential}] after it expired at ".bundle_text($expiresAt));
+        }
+
+        $accepted[] = [
+            'sequence' => $sequence,
+            'record' => $record,
+            'payload' => $payload,
+            'received_at' => $receivedAt,
+            'key' => is_string($payload->commitment_key ?? null) ? $payload->commitment_key : null,
+        ];
+    }
+
+    // Each policy, its windows joined back, must hash to what it says.
+    foreach ($policies as $version => &$policy) {
+        $windows = array_merge(...($parts[$version] ?: [[]]));
+        $rules = $policy['rules'];
+
+        if (! $rules instanceof stdClass || count($parts[$version]) !== $policy['parts'] || count($windows) !== $policy['count']) {
+            $fail('POLICY_HASH', "policy version {$version}: its windows are not all in the log");
+            $policy['windows'] = [];
+
+            continue;
+        }
+
+        $full = clone $rules;
+        $full->windows = $windows;
+
+        if ('sha256:'.hash('sha256', canonical_encode($full)) !== $policy['hash']) {
+            $fail('POLICY_HASH', "policy version {$version}: the policy and its windows do not hash to its policy_hash");
+        }
+
+        $policy['windows'] = $windows;
+    }
+
+    unset($policy);
+
+    return [
+        'policies' => $policies,
+        'accepted' => $accepted,
+        'decisions' => $decisions,
+        'closes' => $closes,
+        'counts' => ['decisions' => array_sum($outcomes), 'outcomes' => $outcomes, 'credentials' => $byCredential],
+        'problems' => $problems,
+        'last_received_at' => $lastReceivedAt,
+    ];
+}
+
+/**
+ * The reconcile rules (FORMAT.md, "--reconcile"), in order. The reason is
+ * the first rule that failed.
+ *
+ * @param  array{manifest: stdClass, events: array<int, stdClass>, checkpoints: list<array{from: int, to: int, created_at: string}>}  $registry
+ * @param  array{manifest: stdClass, events: array<int, stdClass>, checkpoints: list<array{from: int, to: int, created_at: string}>}  $log
+ * @param  list<string>  $receiptPaths
+ * @return array{counts: array<string, mixed>, receipts_checked: int}
+ */
+function reconcile_registry(array $registry, array $log, array $receiptPaths): array
+{
+    $publicId = manifest_public_id($registry['manifest']);
+
+    // When a bundle was known complete: its latest checkpoint, or the
+    // latest trusted anchor over one, whichever is later. A record due to
+    // be sealed by then is in the bundle, or it is missing from it.
+    $completeAt = static function (array $bundle): ?DateTimeImmutable {
+        $latest = null;
+
+        foreach ($bundle['checkpoints'] as $checkpoint) {
+            $at = parse_rfc3339($checkpoint['created_at']);
+            $latest = $at !== null && ($latest === null || $at > $latest) ? $at : $latest;
+        }
+
+        $anchoredAt = is_int($bundle['anchored_at'] ?? null) ? new DateTimeImmutable('@'.$bundle['anchored_at']) : null;
+
+        return $anchoredAt !== null && ($latest === null || $anchoredAt > $latest) ? $anchoredAt : $latest;
+    };
+    $registryCompleteAt = $completeAt($registry);
+    $logCompleteAt = $completeAt($log);
+
+    // Whether a record due sealed by $sealBy belongs in a bundle known
+    // complete at $complete: its deadline, and the grace, had passed.
+    $dueBy = static fn (?DateTimeImmutable $sealBy, ?DateTimeImmutable $complete): bool => $sealBy !== null && $complete !== null
+        && $sealBy->modify('+'.SEAL_GRACE_SECONDS.' seconds') <= $complete;
+
+    // Rule 1: the log is the registry's, and both histories are whole.
+    if ($publicId === null || manifest_log_for($log['manifest']) !== $publicId) {
+        reason_fail('NOT_DECISION_LOG', 'the second bundle is not the decision log of the first (decision_log_for does not name its public_id)');
+
+        return ['counts' => ['decisions' => 0, 'outcomes' => [], 'credentials' => []], 'receipts_checked' => 0];
+    }
+
+    $logRange = $log['manifest']->range ?? null;
+    $registryRange = $registry['manifest']->range ?? null;
+
+    if (! $logRange instanceof stdClass || ($logRange->from ?? null) !== 1 || ! $registryRange instanceof stdClass || ($registryRange->from ?? null) !== 1) {
+        reason_fail('LOG_NOT_DENSE', 'both bundles must start at sequence 1: a registry is reconciled over its whole history');
+    }
+
+    // Both streams are written in time order, under the registry's lock:
+    // the rules below that tell a later record from a missing one rest on it.
+    foreach (['registry' => $registry, 'decision log' => $log] as $name => $bundle) {
+        ksort($bundle['events']);
+        $previousAt = null;
+
+        foreach ($bundle['events'] as $sequence => $event) {
+            $eventAt = parse_rfc3339($event->received_at ?? null);
+
+            if ($eventAt === null || ($previousAt !== null && $eventAt < $previousAt)) {
+                reason_fail('NOT_TIME_ORDERED', "{$name} event {$sequence} was received before the event preceding it");
+
+                break;
+            }
+
+            $previousAt = $eventAt;
+        }
+    }
+
+    // Rule 2: the log opens on its policy.
+    ksort($log['events']);
+    $first = $log['events'][1] ?? null;
+
+    if ($first === null || ($first->action ?? null) !== 'policy.committed') {
+        reason_fail('FIRST_NOT_POLICY', 'decision log event 1 is not policy.committed');
+    }
+
+    $read = read_registry_log($log['events']);
+
+    // Rule 3: every policy is what its hash says.
+    foreach ($read['problems']['POLICY_HASH'] ?? [] as $message) {
+        reason_fail('POLICY_HASH', $message);
+    }
+
+    // Each version's windows by key, once.
+    $windowsByKey = [];
+
+    foreach ($read['policies'] as $version => $policy) {
+        foreach ($policy['windows'] as $window) {
+            if ($window instanceof stdClass && is_string($window->key ?? null)) {
+                $windowsByKey[$version][$window->key] = $window;
+            }
+        }
+    }
+
+    // Rule 4: every policy is this registry's, and amended only as the one
+    // before it allows: never under frozen, never while an amendment is
+    // pending, and under notice no sooner than its notice period after the
+    // amendment was recorded.
+    $previous = null;
+
+    foreach ($read['policies'] as $version => $policy) {
+        $rules = $policy['rules'] instanceof stdClass ? $policy['rules'] : null;
+
+        if ($rules === null || ($rules->registry ?? null) !== $publicId) {
+            reason_fail('POLICY_AMENDMENT', "policy version {$version} is not this registry's (its registry is not {$publicId})");
+        }
+
+        if ($rules !== null && ($rules->msd_seconds ?? null) !== MSD_SECONDS) {
+            reason_fail('POLICY_AMENDMENT', "policy version {$version}: msd_seconds is not ".MSD_SECONDS);
+        }
+
+        if ($rules !== null && ($rules->amendment ?? null) === 'notice' && ! notice_in_bounds($rules->notice_seconds ?? null)) {
+            reason_fail('POLICY_AMENDMENT', "policy version {$version}: notice_seconds is not an integer from ".MIN_NOTICE_SECONDS.' to '.MAX_NOTICE_SECONDS);
+        }
+
+        if ($previous === null) {
+            if ($version !== 1 || $policy['action'] !== 'policy.committed') {
+                reason_fail('POLICY_AMENDMENT', "the first policy record is version {$version}, {$policy['action']}, not version 1 committed");
+            }
+        } else {
+            $previousRules = $read['policies'][$previous]['rules'];
+            $notice = $previousRules instanceof stdClass ? ($previousRules->notice_seconds ?? null) : null;
+
+            if ($version !== $previous + 1 || $policy['action'] !== 'policy.amended') {
+                reason_fail('POLICY_AMENDMENT', "policy version {$version} does not amend version {$previous}");
+            } elseif (! $previousRules instanceof stdClass || ($previousRules->amendment ?? null) !== 'notice' || ! notice_in_bounds($notice)) {
+                reason_fail('POLICY_AMENDMENT', "policy version {$previous} cannot be amended (it is not under notice), yet version {$version} amends it");
+            } elseif ($policy['recorded_at'] === null || $read['policies'][$previous]['effective_at'] === null
+                || $policy['recorded_at'] < $read['policies'][$previous]['effective_at']) {
+                reason_fail('POLICY_AMENDMENT', "policy version {$version} amends version {$previous} before version {$previous} took effect");
+            } elseif ($policy['effective_at'] === null
+                || $policy['effective_at'] < $policy['recorded_at']->modify("+{$notice} seconds")) {
+                reason_fail('POLICY_AMENDMENT', "policy version {$version} takes effect sooner than the {$notice} s notice its predecessor requires");
+            }
+        }
+
+        $previous = $version;
+    }
+
+    // Rule 5: every decision follows the registry's state and the policy in
+    // force when it was made: it names that policy's hash, a refusal for a
+    // pause or an archive comes while the log shows one and nothing else
+    // does, an acceptance falls inside its key's window, a replay or
+    // conflict too and names the key's earlier acceptance, an early or late
+    // refusal is early or late, and a refusal for an unknown key is for a
+    // key that policy does not hold.
+    $inForceAt = static function (?DateTimeImmutable $at, int $before) use ($read): ?int {
+        $found = null;
+
+        foreach ($read['policies'] as $version => $policy) {
+            if ($policy['sequence'] < $before && $at !== null && $policy['effective_at'] !== null && $policy['effective_at'] <= $at) {
+                $found = $version;
+            }
+        }
+
+        return $found;
+    };
+
+    $firstAcceptance = [];
+
+    foreach ($read['decisions'] as $decision) {
+        $payload = $decision['payload'];
+        $at = $decision['received_at'];
+        $version = $inForceAt($at, $decision['sequence']);
+        $label = "decision {$decision['sequence']} ({$decision['outcome']})";
+        $key = is_string($payload->commitment_key ?? null) ? $payload->commitment_key : null;
+        $held = $key === null ? null : ($firstAcceptance[$key] ?? null);
+
+        if ($decision['outcome'] === 'accepted' && $key !== null && $held === null && ($payload->accepted ?? null) instanceof stdClass) {
+            $firstAcceptance[$key] = $payload->accepted;
+        }
+
+        // A scope refusal and a throttle are decided before the registry's
+        // state is read; every other outcome after it.
+        $needs = match ($decision['outcome']) {
+            'refused_paused' => 'paused',
+            'refused_archived' => 'archived',
+            'accepted', 'replay', 'conflict', 'invalid', 'refused_early', 'refused_late' => 'active',
+            default => null,
+        };
+
+        if ($needs !== null && $decision['status'] !== $needs) {
+            reason_fail('DECISION_POLICY', "{$label} was made while the log shows the registry {$decision['status']}");
+        }
+
+        if ($version === null) {
+            reason_fail('DECISION_POLICY', "{$label} was made with no policy in force");
+
+            continue;
+        }
+
+        if (($payload->policy_hash ?? null) !== $read['policies'][$version]['hash']) {
+            reason_fail('DECISION_POLICY', "{$label} does not name the hash of policy version {$version}, in force at its received_at");
+        }
+
+        $window = $key === null ? null : ($windowsByKey[$version][$key] ?? null);
+        $openAt = $window === null ? null : parse_rfc3339($window->open_at ?? null);
+        $closeAt = $window === null ? null : parse_rfc3339($window->close_at ?? null);
+        $reasons = array_filter(bundle_items($payload->reasons ?? null), is_string(...));
+        $open = $window !== null && $openAt !== null && $closeAt !== null && $at >= $openAt && $at < $closeAt;
+
+        // A replay or conflict names the key's first acceptance as it was
+        // logged; a replay repeats its request, a conflict differs from it.
+        $named = $payload->accepted ?? null;
+        $heldDigest = $held === null ? null : bundle_text($held->request_digest ?? null);
+        $namesHolder = $held !== null && $named instanceof stdClass
+            && ($named->sequence ?? null) === ($held->sequence ?? false)
+            && bundle_text($named->entry_hash ?? null) === bundle_text($held->entry_hash ?? null)
+            && bundle_text($named->request_digest ?? null) === $heldDigest;
+        $digest = bundle_text($payload->request_digest ?? null);
+
+        $broken = match ($decision['outcome']) {
+            'accepted' => ! $open,
+            'replay' => ! $open || ! $namesHolder || $digest !== $heldDigest,
+            'conflict' => ! $open || ! $namesHolder || $digest === $heldDigest,
+            'refused_early' => $window === null || $openAt === null || $at >= $openAt,
+            'refused_late' => $window === null || $closeAt === null || $at < $closeAt,
+            'invalid' => in_array('unknown_key', $reasons, true) && $window !== null,
+            default => false,
+        };
+
+        if ($broken) {
+            reason_fail('DECISION_POLICY', "{$label} for key [".($key ?? '')."] contradicts the windows of policy version {$version}".(in_array($decision['outcome'], ['replay', 'conflict'], true) ? " or the key's logged acceptance" : ''));
+        }
+    }
+
+    // Rule 6: acceptances and registry events match one to one. The log is
+    // exported first. An acceptance of an event past the registry bundle's
+    // range is missing from that bundle when it came before the bundle's
+    // last event, or when its event was due to be sealed by the time the
+    // bundle was known complete; otherwise it may be later than the export,
+    // and the run is unconfirmed until the registry is exported again.
+    // Registry events received after the log's last record, past every event
+    // it accepts, may have been decided after the log's export: unconfirmed
+    // too, never passed.
+    $claimed = [];
+    $highestNamed = 0;
+    $registryTo = $registryRange instanceof stdClass && is_int($registryRange->to ?? null) ? $registryRange->to : 0;
+    $registryLastAt = null;
+
+    foreach ($registry['events'] as $event) {
+        $eventAt = parse_rfc3339($event->received_at ?? null);
+        $registryLastAt = $eventAt !== null && ($registryLastAt === null || $eventAt > $registryLastAt) ? $eventAt : $registryLastAt;
+    }
+
+    foreach ($read['accepted'] as $acceptance) {
+        $payload = $acceptance['payload'];
+        $named = $payload->accepted ?? null;
+
+        if ($named instanceof stdClass && is_int($named->sequence ?? null)) {
+            $highestNamed = max($highestNamed, $named->sequence);
+        }
+
+        // MSD_SECONDS, not the policy's value: a policy naming another
+        // already fails rule 4, and every seal_by is signed with it.
+        $sealBy = $acceptance['received_at']?->modify('+'.MSD_SECONDS.' seconds');
+
+        if ($named instanceof stdClass && is_int($named->sequence ?? null) && $named->sequence > $registryTo
+            && ($acceptance['received_at'] === null || $registryLastAt === null || $acceptance['received_at'] >= $registryLastAt)
+            && ! $dueBy($sealBy, $registryCompleteAt)) {
+            set_reason('ACCEPTED_UNMATCHED', unconfirmed: true);
+            unconfirmed("ACCEPTED_UNMATCHED: decision {$acceptance['sequence']} accepts registry event {$named->sequence}, past the registry bundle's range: export the registry again, after the log", RESULT_SCOPE);
+
+            continue;
+        }
+
+        $event = $named instanceof stdClass && is_int($named->sequence ?? null) ? ($registry['events'][$named->sequence] ?? null) : null;
+
+        if ($event === null
+            || bundle_text($event->entry_hash ?? null) !== bundle_text($named->entry_hash ?? null)
+            || request_digest($event, $acceptance['key']) !== bundle_text($payload->request_digest ?? null)
+            || bundle_text($event->received_at ?? null) !== bundle_text($acceptance['record']->received_at ?? null)) {
+            reason_fail('ACCEPTED_UNMATCHED', "decision {$acceptance['sequence']} accepts an event the registry does not hold as it says");
+
+            continue;
+        }
+
+        $claimed[$named->sequence] = ($claimed[$named->sequence] ?? 0) + 1;
+    }
+
+    foreach ($registry['events'] as $sequence => $event) {
+        $count = $claimed[$sequence] ?? 0;
+        $eventAt = parse_rfc3339($event->received_at ?? null);
+
+        $sealBy = $eventAt?->modify('+'.MSD_SECONDS.' seconds');
+
+        if ($count === 0 && $sequence > $highestNamed && $eventAt !== null && $read['last_received_at'] !== null && $eventAt > $read['last_received_at']
+            && ! $dueBy($sealBy, $logCompleteAt)) {
+            set_reason('PARENT_UNMATCHED', unconfirmed: true);
+            unconfirmed("PARENT_UNMATCHED: registry event {$sequence} was received after the log's last record; its decision may be past the log bundle's range: export the log again, then the registry", RESULT_SCOPE);
+
+            continue;
+        }
+
+        if ($count !== 1) {
+            reason_fail('PARENT_UNMATCHED', "registry event {$sequence} is accepted by {$count} decision(s), not exactly one");
+        }
+    }
+
+    // Rule 7: one acceptance per key.
+    $acceptedAt = [];
+
+    foreach ($read['accepted'] as $acceptance) {
+        $key = $acceptance['key'];
+
+        if ($key === null) {
+            reason_fail('DOUBLE_ACCEPTANCE', "decision {$acceptance['sequence']} accepts without a commitment key");
+
+            continue;
+        }
+
+        if (isset($acceptedAt[$key])) {
+            reason_fail('DOUBLE_ACCEPTANCE', "commitment key [{$key}] is accepted twice (decisions {$acceptedAt[$key]['sequence']} and {$acceptance['sequence']})");
+
+            continue;
+        }
+
+        $acceptedAt[$key] = $acceptance;
+    }
+
+    // Rule 8: every window closes once, truthfully.
+    $policiesByHash = [];
+
+    foreach ($read['policies'] as $version => $policy) {
+        $policiesByHash[$policy['hash']] = $version;
+    }
+
+    $closed = [];
+
+    foreach ($read['closes'] as $close) {
+        $payload = $close->payload;
+        $key = bundle_text($payload->key ?? null);
+        $version = $policiesByHash[bundle_text($payload->policy_hash ?? null)] ?? null;
+        $window = $version === null ? null : ($windowsByKey[$version][$key] ?? null);
+
+        if ($window === null || bundle_text($payload->close_at ?? null) !== bundle_text($window->close_at ?? null)) {
+            reason_fail('WINDOW_CLOSE', "window.closed {$close->sequence} names key [{$key}], which its policy does not hold with that close_at");
+
+            continue;
+        }
+
+        if (isset($closed[$version][$key])) {
+            reason_fail('WINDOW_CLOSE', "key [{$key}] is closed twice under policy version {$version}");
+
+            continue;
+        }
+
+        $closed[$version][$key] = true;
+        $closeAt = parse_rfc3339($window->close_at ?? null);
+        $acceptance = $acceptedAt[$key] ?? null;
+        $committed = $acceptance !== null && $closeAt !== null && $acceptance['received_at'] !== null && $acceptance['received_at'] < $closeAt;
+        $outcome = $payload->outcome ?? null;
+        $named = $payload->accepted ?? null;
+
+        if ($committed
+            ? ($outcome !== 'committed' || ! $named instanceof stdClass || ($named->sequence ?? null) !== ($acceptance['payload']->accepted->sequence ?? false))
+            : ($outcome !== 'missing' || $named !== null)) {
+            reason_fail('WINDOW_CLOSE', "window.closed {$close->sequence} says [".bundle_text($outcome)."] for key [{$key}], but the log shows it ".($committed ? 'committed' : 'missing'));
+        }
+    }
+
+    $lastReceivedAt = $read['last_received_at'];
+
+    foreach ($read['policies'] as $version => $policy) {
+        foreach ($policy['windows'] as $window) {
+            $closeAt = $window instanceof stdClass ? parse_rfc3339($window->close_at ?? null) : null;
+
+            $windowKey = $window instanceof stdClass ? bundle_text($window->key ?? null) : '';
+
+            if ($closeAt === null || $lastReceivedAt === null
+                || $closeAt->modify('+'.WINDOW_CLOSE_GRACE_SECONDS.' seconds') >= $lastReceivedAt
+                || isset($closed[$version][$windowKey])) {
+                continue;
+            }
+
+            // In force at its close: the latest version effective by then.
+            $inForce = null;
+
+            foreach ($read['policies'] as $candidateVersion => $candidate) {
+                if ($candidate['effective_at'] !== null && $candidate['effective_at'] <= $closeAt) {
+                    $inForce = $candidateVersion;
+                }
+            }
+
+            if ($inForce === $version) {
+                reason_fail('WINDOW_CLOSE', "key [{$windowKey}] of policy version {$version} closed at ".bundle_text($window->close_at ?? null).' and has no window.closed');
+            }
+        }
+    }
+
+    // Rule 9: every acceptance came from a valid credential.
+    foreach ($read['problems']['CREDENTIAL_NOT_VALID'] ?? [] as $message) {
+        reason_fail('CREDENTIAL_NOT_VALID', $message);
+    }
+
+    // Rule 10: every receipt is logged, says what its record says, and was
+    // sealed by its deadline: the whole --receipt check, against both bundles.
+    $checked = 0;
+
+    foreach ($receiptPaths as $path) {
+        $label = 'receipt '.basename($path);
+        $document = read_receipt_document($path);
+
+        if ($document === null) {
+            $checked++;
+
+            continue;
+        }
+
+        $body = $document['body'];
+
+        if (($body->stream ?? null) !== $publicId) {
+            note("{$label} is for another stream; set aside");
+
+            continue;
+        }
+
+        $checked++;
+
+        if (! check_receipt($body, $document['signature'], $label)) {
+            continue;
+        }
+
+        $logTo = $logRange instanceof stdClass && is_int($logRange->to ?? null) ? $logRange->to : 0;
+        $receiptAt = parse_rfc3339($body->received_at ?? null);
+
+        // A receipt for a decision made after the log's export holds no
+        // record to check against yet: unconfirmed, not unlogged. The log is
+        // written in time order, so one from before its last record is
+        // missing from it, as is one whose decision record was due to be
+        // sealed by the time the log was known complete. Every record of a
+        // registry's log is held to its received_at plus the seal delay, the
+        // receipt's seal_by, an acceptance's included.
+        if (is_int($body->decision_seq ?? null) && $body->decision_seq > $logTo
+            && ($receiptAt === null || $read['last_received_at'] === null || $receiptAt >= $read['last_received_at'])
+            && ! $dueBy(parse_rfc3339($body->seal_by ?? null), $logCompleteAt)) {
+            set_reason('RECEIPT_NOT_LOGGED', unconfirmed: true);
+            unconfirmed("RECEIPT_NOT_LOGGED: {$label} names decision {$body->decision_seq}, past the log bundle's range: export the log again", RESULT_SCOPE);
+
+            continue;
+        }
+
+        $record = is_int($body->decision_seq ?? null) ? ($log['events'][$body->decision_seq] ?? null) : null;
+        $differences = $record === null ? ['decision_seq'] : decision_record_differences($record, $body);
+
+        if ($differences !== []) {
+            reason_fail('RECEIPT_NOT_LOGGED', "{$label}: signed by Sigilbase, but the decision log does not hold it (".implode(', ', $differences).')');
+
+            continue;
+        }
+
+        check_receipt_subject($body, $registry, $log);
+    }
+
+    return ['counts' => $read['counts'], 'receipts_checked' => $checked];
 }
 
 // ---------------------------------------------------------------------------
@@ -4100,6 +5282,10 @@ $recordedRoot = null;
 $recordedSize = null;
 $keysFile = null;
 $tsaRootsFile = null;
+$receiptFile = null;
+$reconcileMode = false;
+$receiptsDir = null;
+$receiptKeysFile = null;
 $showHelp = false;
 $targets = [];
 
@@ -4132,6 +5318,20 @@ for ($i = 0; $i < count($arguments); $i++) {
         $tsaRootsFile = (string) ($arguments[++$i] ?? '');
     } elseif (str_starts_with($argument, '--tsa-roots=')) {
         $tsaRootsFile = substr($argument, 12);
+    } elseif ($argument === '--receipt') {
+        $receiptFile = (string) ($arguments[++$i] ?? '');
+    } elseif (str_starts_with($argument, '--receipt=')) {
+        $receiptFile = substr($argument, 10);
+    } elseif ($argument === '--reconcile') {
+        $reconcileMode = true;
+    } elseif ($argument === '--receipts') {
+        $receiptsDir = (string) ($arguments[++$i] ?? '');
+    } elseif (str_starts_with($argument, '--receipts=')) {
+        $receiptsDir = substr($argument, 11);
+    } elseif ($argument === '--receipt-keys') {
+        $receiptKeysFile = (string) ($arguments[++$i] ?? '');
+    } elseif (str_starts_with($argument, '--receipt-keys=')) {
+        $receiptKeysFile = substr($argument, 15);
     } elseif ($argument === '--help' || $argument === '-h') {
         $showHelp = true;
     } elseif (str_starts_with($argument, '--')) {
@@ -4147,12 +5347,18 @@ Sigilbase evidence verifier.
 usage: php verify.php [options] <bundle.zip | extracted-bundle-directory>
        php verify.php --consistency <old-bundle> <new-bundle>
        php verify.php --consistency <bundle> --root <hex> --size <n>
+       php verify.php --receipt <receipt.json> [<bundle> [<decision-log-bundle>]]
+       php verify.php --reconcile <registry-bundle> <decision-log-bundle> [--receipts <dir>]
 
 Options:
   --keys <file>       trust these signing keys instead of the built-in set.
                       Same shape as https://app.sigilbase.io/api/v1/keys
   --tsa-roots <file>  trust these timestamp-authority roots (PEM) instead of
                       the built-in ones
+  --receipt-keys <file>
+                      trust these receipt keys instead of the built-in set.
+                      Same shape as https://app.sigilbase.io/api/v1/receipt-keys
+  --receipts <dir>    with --reconcile: the receipts a submitter holds
   --skip-anchors      do not validate the RFC 3161 anchors
   --json              one machine-readable JSON document on stdout
   --quiet             no output at all; the exit code is the whole answer
@@ -4185,6 +5391,11 @@ if ($keysFile !== null) {
     $trustedSetSource = "--keys {$keysFile}";
 }
 
+if ($receiptKeysFile !== null) {
+    $trustedReceiptKeys = load_receipt_key_file($receiptKeysFile);
+    $trustedReceiptKeysSource = "--receipt-keys {$receiptKeysFile}";
+}
+
 if ($tsaRootsFile !== null) {
     if (! is_file($tsaRootsFile)) {
         fail_hard("--tsa-roots file [{$tsaRootsFile}] does not exist", EXIT_ERROR);
@@ -4199,6 +5410,194 @@ foreach ($targets as $target) {
 }
 
 out('Sigilbase evidence verifier v'.VERIFIER_VERSION."\n");
+
+// ---- receipt mode -----------------------------------------------------------
+
+if ($receiptFile !== null && ! $reconcileMode && ! $consistencyMode && count($targets) <= 2) {
+    out("Mode:   receipt\n");
+    out("Receipt: {$receiptFile}\n");
+    out("Receipt keys: {$trustedReceiptKeysSource}\n\n");
+
+    $streamView = null;
+    $logView = null;
+    $bundles = [];
+    $document = read_receipt_document($receiptFile);
+    $streamId = $document === null ? null : ($document['body']->stream ?? null);
+
+    foreach ($targets as $target) {
+        out("=== Bundle: {$target} ===\n\n");
+
+        $before = count($failures);
+        $verified = verify_bundle($target, $skipAnchors);
+        $bundles[] = ['path' => $target, 'stream' => $verified['stream_id'], 'range' => ['from' => $verified['range_from'], 'to' => $verified['range_to']]];
+
+        out("\n");
+
+        if (count($failures) > $before) {
+            set_reason('BUNDLE');
+            note("bundle [{$target}] does not verify; the receipt is not checked against it");
+
+            continue;
+        }
+
+        $view = load_verified_bundle($target);
+
+        if (is_string($streamId) && manifest_log_for($view['manifest']) === $streamId) {
+            $logView = $view;
+        } elseif (is_string($streamId) && manifest_public_id($view['manifest']) === $streamId) {
+            $streamView = $view;
+        } else {
+            fail_hard("bundle [{$target}] is neither the receipt's stream nor its decision log (no matching public_id)", EXIT_ERROR);
+        }
+    }
+
+    out("Checking the receipt...\n");
+
+    $subject = 'not_checked';
+    $summary = null;
+
+    if ($document !== null) {
+        $body = $document['body'];
+
+        if (check_receipt($body, $document['signature'], 'the receipt') && $targets !== []) {
+            $subject = check_receipt_subject($body, $streamView, $logView);
+        }
+
+        $summary = [
+            'key_id' => is_string($body->key_id ?? null) ? $body->key_id : null,
+            'stream' => is_string($body->stream ?? null) ? $body->stream : null,
+            'outcome' => is_string($body->outcome ?? null) ? $body->outcome : null,
+            'decision_seq' => is_int($body->decision_seq ?? null) ? $body->decision_seq : null,
+            'received_at' => is_string($body->received_at ?? null) ? $body->received_at : null,
+            'seal_by' => is_string($body->seal_by ?? null) ? $body->seal_by : null,
+            'subject' => $subject,
+        ];
+    }
+
+    out("\n");
+
+    $code = verdict_code();
+
+    if ($code === EXIT_FAIL) {
+        out('FAIL: '.count($failures)." problem(s) found. This receipt does NOT hold.\n");
+    } elseif ($code === EXIT_UNCONFIRMED) {
+        out("UNCONFIRMED: nothing here contradicts the receipt, but whose signature it carries is not established.\n");
+    } else {
+        out('PASS: this receipt is the signed statement of Sigilbase'.($subject === 'checked' ? ', and the records it names say the same.' : '.')."\n");
+    }
+
+    conclude($code, [
+        'mode' => 'receipt',
+        'receipt' => $summary,
+        'bundles' => $bundles,
+        'reason' => run_reason(),
+    ]);
+}
+
+// ---- reconcile mode ---------------------------------------------------------
+
+if ($reconcileMode && $receiptFile === null && ! $consistencyMode && count($targets) === 2) {
+    out("Mode:   reconcile a registry with its decision log\n");
+    out("Receipt keys: {$trustedReceiptKeysSource}\n\n");
+
+    $receiptPaths = [];
+
+    if ($receiptsDir !== null) {
+        if (! is_dir($receiptsDir)) {
+            fail_hard("--receipts directory [{$receiptsDir}] does not exist", EXIT_ERROR);
+        }
+
+        $receiptsDir = rtrim($receiptsDir, '/\\');
+
+        // Every regular file whose name ends in .json and does not start
+        // with a dot, in byte order of its name: no pattern expansion of the
+        // directory's own name, no subdirectory.
+        foreach (scandir($receiptsDir) ?: [] as $name) {
+            if (! str_starts_with($name, '.') && str_ends_with($name, '.json') && is_file($receiptsDir.DIRECTORY_SEPARATOR.$name)) {
+                $receiptPaths[] = $receiptsDir.DIRECTORY_SEPARATOR.$name;
+            }
+        }
+
+        usort($receiptPaths, static fn (string $a, string $b): int => strcmp(basename($a), basename($b)));
+    }
+
+    out("=== Registry: {$targets[0]} ===\n\n");
+    $registryResult = verify_bundle($targets[0], $skipAnchors);
+    out("\n=== Decision log: {$targets[1]} ===\n\n");
+    $logResult = verify_bundle($targets[1], $skipAnchors);
+    out("\nReconciling...\n");
+
+    $reconciled = ['counts' => ['decisions' => 0, 'outcomes' => [], 'credentials' => []], 'receipts_checked' => 0];
+
+    if ($failures !== []) {
+        set_reason('BUNDLE');
+        note('a bundle does not verify, so the registry is not reconciled');
+    } else {
+        $reconciled = reconcile_registry(
+            load_verified_bundle($targets[0]) + ['anchored_at' => $registryResult['latest_anchor_at']],
+            load_verified_bundle($targets[1]) + ['anchored_at' => $logResult['latest_anchor_at']],
+            $receiptPaths,
+        );
+    }
+
+    $counts = $reconciled['counts'];
+
+    out("\n");
+    out("Decisions: {$counts['decisions']}");
+
+    foreach ($counts['outcomes'] as $outcome => $count) {
+        out("  {$outcome} {$count}");
+    }
+
+    out("\n");
+
+    foreach ($counts['credentials'] as $credential => $byOutcome) {
+        out("  credential {$credential}:");
+
+        foreach ($byOutcome as $outcome => $count) {
+            out(" {$outcome} {$count}");
+        }
+
+        out("\n");
+    }
+
+    out("Receipts checked: {$reconciled['receipts_checked']}\n\n");
+
+    $code = verdict_code();
+
+    if ($code === EXIT_FAIL) {
+        out('FAIL: '.count($failures).' problem(s) found'.(run_reason() !== null ? ', the first rule broken being '.run_reason() : '').". The registry does NOT account for every request.\n");
+    } elseif ($code === EXIT_UNCONFIRMED) {
+        out("UNCONFIRMED: no rule is broken, but not every check could be made (an unknown signing key, or a record past the other bundle's range) - see the results below.\n");
+    } else {
+        out("PASS: every decision the log records is accounted for, every acceptance is a registry event and the reverse, and every receipt checked is logged.\n");
+    }
+
+    out("No one can show a request that never reached Sigilbase: this proves what was received, not what was sent.\n");
+
+    conclude($code, [
+        'mode' => 'reconcile',
+        'bundles' => [
+            ['path' => $targets[0], 'stream' => $registryResult['stream_id'], 'range' => ['from' => $registryResult['range_from'], 'to' => $registryResult['range_to']]],
+            ['path' => $targets[1], 'stream' => $logResult['stream_id'], 'range' => ['from' => $logResult['range_from'], 'to' => $logResult['range_to']]],
+        ],
+        'counts' => [
+            'decisions' => $counts['decisions'],
+            'outcomes' => (object) $counts['outcomes'],
+            'credentials' => (object) array_map(static fn (array $byOutcome): object => (object) $byOutcome, $counts['credentials']),
+        ],
+        'receipts_checked' => $reconciled['receipts_checked'],
+        'reason' => run_reason(),
+    ]);
+}
+
+if ($receiptFile !== null || $reconcileMode) {
+    if (! $quiet && ! $jsonMode) {
+        fwrite(STDERR, $usage);
+    }
+
+    fail_hard('invalid combination of arguments', EXIT_ERROR);
+}
 
 if (! $consistencyMode) {
     if (count($targets) !== 1) {
