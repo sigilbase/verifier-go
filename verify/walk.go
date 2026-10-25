@@ -36,6 +36,10 @@ type bundleResult struct {
 	eventCount      int64
 	checkpointCount int64
 	redactedCount   int64
+	// latestAnchorAt is verify_bundle's latest_anchor_at: the latest
+	// genTime of an anchor that verified against trusted roots, nil when
+	// none did.
+	latestAnchorAt *int64
 	// collection is what the format 1.6 collection check counted, nil
 	// when the bundle holds no collection record.
 	collection *CollectionSummary
@@ -632,7 +636,8 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 
 	// ---- anchors.json (format 1.1, optional) --------------------------------
 
-	if herr := r.checkAnchors(b, skipAnchors, checkpointHashes); herr != nil {
+	latestAnchorAt, herr := r.checkAnchors(b, skipAnchors, checkpointHashes)
+	if herr != nil {
 		return nil, herr
 	}
 
@@ -672,6 +677,7 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 		eventCount:      eventCount,
 		checkpointCount: int64(len(checkpoints.Arr)),
 		redactedCount:   redactedCount,
+		latestAnchorAt:  latestAnchorAt,
 		collection:      collection,
 		cumulativeRoots: cumulativeRootAt,
 	}

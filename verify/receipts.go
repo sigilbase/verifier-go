@@ -399,6 +399,9 @@ type verifiedBundle struct {
 	events      map[int64]*cjson.Value
 	order       []int64
 	checkpoints []verifiedCheckpoint
+	// anchoredAt is the bundle's latest_anchor_at from its verification,
+	// set by the reconcile mode (Unix seconds, nil when none).
+	anchoredAt *int64
 }
 
 func (v *verifiedBundle) event(seq int64) *cjson.Value {
@@ -976,6 +979,11 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []string) (ReconcileCounts, int, *hardError) {
 	publicID, hasID := manifestPublicID(registry.manifest)
 
+	// When a bundle was known complete: its latest checkpoint, or the
+	// latest trusted anchor over one, whichever is later.
+	registryCompleteAt, registryCompleteOK := completeAt(registry)
+	logCompleteAt, logCompleteOK := completeAt(log)
+
 	// Rule 1: the log is the registry's, and both histories are whole.
 	if logFor, isLog := manifestLogFor(log.manifest); !hasID || !isLog || logFor != publicID {
 		r.reasonFail("NOT_DECISION_LOG", "the second bundle is not the decision log of the first (decision_log_for does not name its public_id)", ResultContent)
@@ -985,6 +993,26 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 	logRange, registryRange := log.manifest.Field("range"), registry.manifest.Field("range")
 	if !isObject(logRange) || !intIs(logRange.Field("from"), 1) || !isObject(registryRange) || !intIs(registryRange.Field("from"), 1) {
 		r.reasonFail("LOG_NOT_DENSE", "both bundles must start at sequence 1: a registry is reconciled over its whole history", ResultContent)
+	}
+
+	// Both streams are written in time order, under the registry's lock:
+	// the rules below that tell a later record from a missing one rest on it.
+	for _, named := range []struct {
+		name   string
+		bundle *verifiedBundle
+	}{{"registry", registry}, {"decision log", log}} {
+		sequences := append([]int64{}, named.bundle.order...)
+		sort.Slice(sequences, func(i, j int) bool { return sequences[i] < sequences[j] })
+		var previousAt time.Time
+		previousOK := false
+		for _, sequence := range sequences {
+			eventAt, ok := parseRFC3339Value(named.bundle.events[sequence].Field("received_at"))
+			if !ok || (previousOK && eventAt.Before(previousAt)) {
+				r.reasonFail("NOT_TIME_ORDERED", fmt.Sprintf("%s event %d was received before the event preceding it", named.name, sequence), ResultContent)
+				break
+			}
+			previousAt, previousOK = eventAt, true
+		}
 	}
 
 	// Rule 2: the log opens on its policy.
@@ -1188,10 +1216,18 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > highestNamed {
 			highestNamed = named.Field("sequence").Int
 		}
-		// The registry is written in time order too: an acceptance from
-		// before its last event names an event it should hold.
+		// An acceptance past the registry bundle's range is missing from it
+		// when it came before the bundle's last event, or when its event was
+		// due to be sealed (received_at plus the policy's msd_seconds) by the
+		// time the bundle was known complete; otherwise it may be later.
+		var msd *cjson.Value
+		if policy := inForceAt(acceptance.receivedAt, acceptance.receivedOK, acceptance.sequence); policy != nil && isObject(policy.rules) && isInt(policy.rules.Field("msd_seconds")) {
+			msd = policy.rules.Field("msd_seconds")
+		}
+		sealByUnknown := msd == nil || !acceptance.receivedOK
 		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > registryTo &&
-			(!acceptance.receivedOK || !registryLastOK || !acceptance.receivedAt.Before(registryLastAt)) {
+			(!acceptance.receivedOK || !registryLastOK || !acceptance.receivedAt.Before(registryLastAt)) &&
+			(sealByUnknown || !registryCompleteOK || afterPlusSeconds(acceptance.receivedAt, msdSeconds(msd), registryCompleteAt)) {
 			r.setUnconfirmedReason("ACCEPTED_UNMATCHED")
 			r.unconfirmed(fmt.Sprintf("ACCEPTED_UNMATCHED: decision %d accepts registry event %d, past the registry bundle's range: export the registry again, after the log", acceptance.sequence, named.Field("sequence").Int), ResultScope)
 			continue
@@ -1212,7 +1248,8 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 	for _, sequence := range registry.order {
 		count := claimed[sequence]
 		if eventAt, ok := parseRFC3339Value(registry.events[sequence].Field("received_at")); count == 0 && sequence > highestNamed && ok && read.lastOK && eventAt.After(read.lastReceived) {
-			r.note(fmt.Sprintf("registry event %d was received after the log's last record: its decision is past the log bundle's range, not checked", sequence))
+			r.setUnconfirmedReason("PARENT_UNMATCHED")
+			r.unconfirmed(fmt.Sprintf("PARENT_UNMATCHED: registry event %d was received after the log's last record; its decision may be past the log bundle's range: export the log again, then the registry", sequence), ResultScope)
 			continue
 		}
 		if count != 1 {
@@ -1354,8 +1391,16 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 			logTo = logRange.Field("to").Int
 		}
 		receiptAt, receiptOK := parseRFC3339Value(body.Field("received_at"))
+		// The decision record of every outcome but an acceptance (whose
+		// seal_by is its event's) was due to be sealed by seal_by.
+		var recordSealBy time.Time
+		recordSealOK := false
+		if !strEq(body.Field("outcome"), "accepted") {
+			recordSealBy, recordSealOK = parseRFC3339Value(body.Field("seal_by"))
+		}
 		if d := body.Field("decision_seq"); isInt(d) && d.Int > logTo &&
-			(!receiptOK || !read.lastOK || !receiptAt.Before(read.lastReceived)) {
+			(!receiptOK || !read.lastOK || !receiptAt.Before(read.lastReceived)) &&
+			(!recordSealOK || !logCompleteOK || recordSealBy.After(logCompleteAt)) {
 			r.setUnconfirmedReason("RECEIPT_NOT_LOGGED")
 			r.unconfirmed(fmt.Sprintf("RECEIPT_NOT_LOGGED: %s names decision %d, past the log bundle's range: export the log again", label, d.Int), ResultScope)
 			continue
@@ -1388,6 +1433,42 @@ const (
 // noticeInBounds is notice_in_bounds.
 func noticeInBounds(v *cjson.Value) bool {
 	return isInt(v) && v.Int >= minNoticeSeconds && v.Int <= maxNoticeSeconds
+}
+
+// completeAt is the time a bundle was known complete: the latest of its
+// checkpoints' created_at and its latest trusted anchor. The second result
+// is false when neither is known.
+func completeAt(b *verifiedBundle) (time.Time, bool) {
+	var latest time.Time
+	ok := false
+	for _, cp := range b.checkpoints {
+		if at, parsed := parseRFC3339(cp.createdAt); parsed && (!ok || at.After(latest)) {
+			latest, ok = at, true
+		}
+	}
+	if b.anchoredAt != nil {
+		if at := time.Unix(*b.anchoredAt, 0).UTC(); !ok || at.After(latest) {
+			latest, ok = at, true
+		}
+	}
+	return latest, ok
+}
+
+func msdSeconds(v *cjson.Value) int64 {
+	if v == nil {
+		return 0
+	}
+	return v.Int
+}
+
+// afterPlusSeconds is "$at->modify('+N seconds') > $than", computed in
+// whole seconds and nanoseconds so that a large N cannot overflow.
+func afterPlusSeconds(at time.Time, seconds int64, than time.Time) bool {
+	diff := than.Unix() - at.Unix()
+	if diff != seconds {
+		return seconds > diff
+	}
+	return at.Nanosecond() > than.Nanosecond()
 }
 
 // effectiveBeforeNotice is "$effective < $recorded->modify('+N seconds')",
@@ -1476,6 +1557,8 @@ func Reconcile(registryPath, logPath string, receiptsDir *string, opts Options) 
 		if herr != nil {
 			return r.finishHard(rep, herr)
 		}
+		registry.anchoredAt = registryResult.latestAnchorAt
+		log.anchoredAt = logResult.latestAnchorAt
 		counts, checked, herr = r.reconcileRegistry(registry, log, receiptPaths)
 		if herr != nil {
 			return r.finishHard(rep, herr)

@@ -3016,7 +3016,7 @@ function check_collection_records(string $dir, string $eventsPath, int $rangeFro
  * Fully verify one bundle. Prints progress; failures land in the global
  * list AND the returned array.
  *
- * @return array{stream_id: string, range_from: int, range_to: int, event_count: int, checkpoint_count: int, redacted_count: int, cumulative_roots: array<int, string>, leaves: list<string>, failures: list<string>}
+ * @return array{stream_id: string, range_from: int, range_to: int, event_count: int, checkpoint_count: int, latest_anchor_at: ?int, redacted_count: int, cumulative_roots: array<int, string>, leaves: list<string>, failures: list<string>}
  */
 /**
  * @param  bool  $collectLeaves  keep every entry hash as raw bytes. Only
@@ -3567,6 +3567,11 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
 
     $anchorsPath = $dir.DIRECTORY_SEPARATOR.'anchors.json';
 
+    // The latest genTime of an anchor that verified against roots this
+    // verifier trusts: the bundle was exported after it, and no operator
+    // can backdate it.
+    $latestAnchorAt = null;
+
     if (! is_file($anchorsPath)) {
         // No anchors at all: nothing was checked, which is not the same as
         // checked and sound.
@@ -3628,8 +3633,14 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                 $trustedPem = $trustedTsaRoots !== '' ? $trustedTsaRoots : null;
                 $caPem = $trustedPem ?? $bundlePem;
 
-                foreach (anchor_validate($token, (string) hex2bin($checkpointHash), $caPem) as $problem) {
+                $anchorProblems = anchor_validate($token, (string) hex2bin($checkpointHash), $caPem);
+
+                foreach ($anchorProblems as $problem) {
                     report("{$label}: {$problem}", RESULT_TIMESTAMPS);
+                }
+
+                if ($anchorProblems === [] && $trustedPem !== null) {
+                    $latestAnchorAt = max($latestAnchorAt ?? $token['gen_time'], $token['gen_time']);
                 }
 
                 if ($trustedPem === null && $bundlePem !== null) {
@@ -4089,6 +4100,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         'range_to' => $rangeTo,
         'event_count' => $eventCount,
         'checkpoint_count' => count($checkpoints),
+        'latest_anchor_at' => $latestAnchorAt,
         'redacted_count' => $redactedCount,
         'collection' => $collection,
         // Cumulative RFC 6962 roots, captured as the events streamed past,
@@ -4792,6 +4804,24 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
 {
     $publicId = manifest_public_id($registry['manifest']);
 
+    // When a bundle was known complete: its latest checkpoint, or the
+    // latest trusted anchor over one, whichever is later. A record due to
+    // be sealed by then is in the bundle, or it is missing from it.
+    $completeAt = static function (array $bundle): ?DateTimeImmutable {
+        $latest = null;
+
+        foreach ($bundle['checkpoints'] as $checkpoint) {
+            $at = parse_rfc3339($checkpoint['created_at']);
+            $latest = $at !== null && ($latest === null || $at > $latest) ? $at : $latest;
+        }
+
+        $anchoredAt = is_int($bundle['anchored_at'] ?? null) ? new DateTimeImmutable('@'.$bundle['anchored_at']) : null;
+
+        return $anchoredAt !== null && ($latest === null || $anchoredAt > $latest) ? $anchoredAt : $latest;
+    };
+    $registryCompleteAt = $completeAt($registry);
+    $logCompleteAt = $completeAt($log);
+
     // Rule 1: the log is the registry's, and both histories are whole.
     if ($publicId === null || manifest_log_for($log['manifest']) !== $publicId) {
         reason_fail('NOT_DECISION_LOG', 'the second bundle is not the decision log of the first (decision_log_for does not name its public_id)');
@@ -4804,6 +4834,25 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
 
     if (! $logRange instanceof stdClass || ($logRange->from ?? null) !== 1 || ! $registryRange instanceof stdClass || ($registryRange->from ?? null) !== 1) {
         reason_fail('LOG_NOT_DENSE', 'both bundles must start at sequence 1: a registry is reconciled over its whole history');
+    }
+
+    // Both streams are written in time order, under the registry's lock:
+    // the rules below that tell a later record from a missing one rest on it.
+    foreach (['registry' => $registry, 'decision log' => $log] as $name => $bundle) {
+        ksort($bundle['events']);
+        $previousAt = null;
+
+        foreach ($bundle['events'] as $sequence => $event) {
+            $eventAt = parse_rfc3339($event->received_at ?? null);
+
+            if ($eventAt === null || ($previousAt !== null && $eventAt < $previousAt)) {
+                reason_fail('NOT_TIME_ORDERED', "{$name} event {$sequence} was received before the event preceding it");
+
+                break;
+            }
+
+            $previousAt = $eventAt;
+        }
     }
 
     // Rule 2: the log opens on its policy.
@@ -4961,11 +5010,14 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
     }
 
     // Rule 6: acceptances and registry events match one to one. The log is
-    // exported first: an acceptance of an event past the registry bundle's
-    // range cannot be checked, so the run is unconfirmed until the registry
-    // is exported again. Registry events received after the log's last
-    // record, past every event it accepts, were decided after the log's
-    // export: they are noted.
+    // exported first. An acceptance of an event past the registry bundle's
+    // range is missing from that bundle when it came before the bundle's
+    // last event, or when its event was due to be sealed by the time the
+    // bundle was known complete; otherwise it may be later than the export,
+    // and the run is unconfirmed until the registry is exported again.
+    // Registry events received after the log's last record, past every event
+    // it accepts, may have been decided after the log's export: unconfirmed
+    // too, never passed.
     $claimed = [];
     $highestNamed = 0;
     $registryTo = $registryRange instanceof stdClass && is_int($registryRange->to ?? null) ? $registryRange->to : 0;
@@ -4984,10 +5036,14 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
             $highestNamed = max($highestNamed, $named->sequence);
         }
 
-        // The registry is written in time order too: an acceptance from
-        // before its last event names an event it should hold.
+        $version = $inForceAt($acceptance['received_at'], $acceptance['sequence']);
+        $rules = $version === null ? null : $read['policies'][$version]['rules'];
+        $msd = $rules instanceof stdClass && is_int($rules->msd_seconds ?? null) ? $rules->msd_seconds : null;
+        $sealBy = $msd === null || $acceptance['received_at'] === null ? null : $acceptance['received_at']->modify("+{$msd} seconds");
+
         if ($named instanceof stdClass && is_int($named->sequence ?? null) && $named->sequence > $registryTo
-            && ($acceptance['received_at'] === null || $registryLastAt === null || $acceptance['received_at'] >= $registryLastAt)) {
+            && ($acceptance['received_at'] === null || $registryLastAt === null || $acceptance['received_at'] >= $registryLastAt)
+            && ($sealBy === null || $registryCompleteAt === null || $sealBy > $registryCompleteAt)) {
             set_reason('ACCEPTED_UNMATCHED', unconfirmed: true);
             unconfirmed("ACCEPTED_UNMATCHED: decision {$acceptance['sequence']} accepts registry event {$named->sequence}, past the registry bundle's range: export the registry again, after the log", RESULT_SCOPE);
 
@@ -5013,7 +5069,8 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         $eventAt = parse_rfc3339($event->received_at ?? null);
 
         if ($count === 0 && $sequence > $highestNamed && $eventAt !== null && $read['last_received_at'] !== null && $eventAt > $read['last_received_at']) {
-            note("registry event {$sequence} was received after the log's last record: its decision is past the log bundle's range, not checked");
+            set_reason('PARENT_UNMATCHED', unconfirmed: true);
+            unconfirmed("PARENT_UNMATCHED: registry event {$sequence} was received after the log's last record; its decision may be past the log bundle's range: export the log again, then the registry", RESULT_SCOPE);
 
             continue;
         }
@@ -5153,9 +5210,14 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         // A receipt for a decision made after the log's export holds no
         // record to check against yet: unconfirmed, not unlogged. The log is
         // written in time order, so one from before its last record is
-        // missing from it.
+        // missing from it, as is one whose decision record was due to be
+        // sealed by the time the log was known complete (every outcome but
+        // an acceptance, whose seal_by is its event's).
+        $recordSealBy = ($body->outcome ?? null) === 'accepted' ? null : parse_rfc3339($body->seal_by ?? null);
+
         if (is_int($body->decision_seq ?? null) && $body->decision_seq > $logTo
-            && ($receiptAt === null || $read['last_received_at'] === null || $receiptAt >= $read['last_received_at'])) {
+            && ($receiptAt === null || $read['last_received_at'] === null || $receiptAt >= $read['last_received_at'])
+            && ($recordSealBy === null || $logCompleteAt === null || $recordSealBy > $logCompleteAt)) {
             set_reason('RECEIPT_NOT_LOGGED', unconfirmed: true);
             unconfirmed("RECEIPT_NOT_LOGGED: {$label} names decision {$body->decision_seq}, past the log bundle's range: export the log again", RESULT_SCOPE);
 
@@ -5446,7 +5508,11 @@ if ($reconcileMode && $receiptFile === null && ! $consistencyMode && count($targ
         set_reason('BUNDLE');
         note('a bundle does not verify, so the registry is not reconciled');
     } else {
-        $reconciled = reconcile_registry(load_verified_bundle($targets[0]), load_verified_bundle($targets[1]), $receiptPaths);
+        $reconciled = reconcile_registry(
+            load_verified_bundle($targets[0]) + ['anchored_at' => $registryResult['latest_anchor_at']],
+            load_verified_bundle($targets[1]) + ['anchored_at' => $logResult['latest_anchor_at']],
+            $receiptPaths,
+        );
     }
 
     $counts = $reconciled['counts'];
