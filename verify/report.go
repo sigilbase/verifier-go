@@ -173,6 +173,18 @@ type Report struct {
 	Consistency      *ConsistencyInfo
 	Recorded         *TreeState
 
+	// The receipt and reconcile modes (format 1.7, verifier 1.8). Receipt
+	// is nil when the receipt was not a {body, signature} document; Reason
+	// is the code of the first failed or unconfirmed receipt or registry
+	// check, nil when none was. ReceiptPath and ReceiptKeysSource are for
+	// the human report only.
+	Receipt           *ReceiptSummary
+	Counts            *ReconcileCounts
+	ReceiptsChecked   int
+	Reason            *string
+	ReceiptPath       string
+	ReceiptKeysSource string
+
 	Failures []string
 	Notes    []string
 
@@ -218,6 +230,19 @@ func (r *Report) MarshalJSON() ([]byte, error) {
 	case "consistency-recorded-root":
 		add("bundle", r.Bundle)
 		add("recorded", r.Recorded)
+	case "receipt":
+		add("receipt", r.Receipt)
+		add("bundles", nonNilBundles(r.Bundles))
+		add("reason", r.Reason)
+	case "reconcile":
+		add("bundles", nonNilBundles(r.Bundles))
+		counts := r.Counts
+		if counts == nil {
+			counts = &ReconcileCounts{}
+		}
+		add("counts", counts)
+		add("receipts_checked", r.ReceiptsChecked)
+		add("reason", r.Reason)
 	}
 	add("failures", nonNil(r.Failures))
 	add("notes", nonNil(r.Notes))
@@ -239,6 +264,13 @@ func (b *BundleInfo) MarshalJSON() ([]byte, error) {
 		values["redacted_events"] = b.RedactedEvents
 	}
 	return marshalOrdered(keys, func(k string) any { return values[k] })
+}
+
+func nonNilBundles(b []BundleInfo) []BundleInfo {
+	if b == nil {
+		return []BundleInfo{}
+	}
+	return b
 }
 
 func nonNil(s []string) []string {

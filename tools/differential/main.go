@@ -2,7 +2,9 @@
 // fixture in corpus/expected.json, in the recorded options, and fails on
 // any difference in exit code or in the five results, or on any field of
 // the --json document other than the implementation identity and free
-// text. It also holds both to the recorded expectations. CI runs it as a
+// text. From verifier 1.8 it also runs the receipts and reconcile cases
+// (format 1.7) the same way, and holds the order of the reconcile counts.
+// It also holds both to the recorded expectations. CI runs it as a
 // required gate; a disagreement is a soundness bug in one of the two.
 //
 //	go run ./tools/differential -php php -go ./sigilbase-verify
@@ -105,6 +107,45 @@ func main() {
 			}
 			report(label, problems)
 		}
+	}
+
+	// Receipts and registries (format 1.7, verifier 1.8): every receipts
+	// and reconcile case, compared as documents and held to the recorded
+	// reason, subject, decision count and receipts checked.
+	both := func(label string, args []string, check func(*difftest.Outcome) []string, extra func(php, goOut *difftest.Outcome) []string) {
+		php, err := runner.RunPHP(args...)
+		if err != nil {
+			report(label, []string{err.Error()})
+			return
+		}
+		goOut, err := runner.RunGo(args...)
+		if err != nil {
+			report(label, []string{err.Error()})
+			return
+		}
+		problems := difftest.Compare(php, goOut)
+		if extra != nil {
+			problems = append(problems, extra(php, goOut)...)
+		}
+		for _, p := range check(php) {
+			problems = append(problems, "verify.php vs expected.json: "+p)
+		}
+		for _, p := range check(goOut) {
+			problems = append(problems, "sigilbase-verify vs expected.json: "+p)
+		}
+		report(label, problems)
+	}
+	for _, name := range corpus.SortedReceipts() {
+		rc := corpus.Receipts[name]
+		both("receipt "+name, corpus.ReceiptArgs(name), func(o *difftest.Outcome) []string {
+			return difftest.CheckReceiptExpectation(o, rc)
+		}, nil)
+	}
+	for _, name := range corpus.SortedReconcile() {
+		rc := corpus.Reconcile[name]
+		both("reconcile "+name, corpus.ReconcileArgs(name), func(o *difftest.Outcome) []string {
+			return difftest.CheckReconcileExpectation(o, rc)
+		}, difftest.CompareCountOrder)
 	}
 
 	if failed > 0 {

@@ -103,7 +103,7 @@ func (r *run) checkDeclarations(b bundle.Reader, format, stream string, rangeFro
 	count := len(absent)
 	r.info(fmt.Sprintf("Checking declarations for %d absent payload(s)...", count))
 
-	if format != "sigilbase-evidence/1.5" && format != "sigilbase-evidence/1.6" {
+	if format != "sigilbase-evidence/1.5" && format != "sigilbase-evidence/1.6" && format != "sigilbase-evidence/1.7" {
 		r.report(fmt.Sprintf("this bundle is %s and carries %d absent payload(s). Formats before sigilbase-evidence/1.5 do not carry the declarations that destroyed them, so the absences cannot be verified. Export the range again from Sigilbase to get a bundle that can be.", format, count), ResultRedactions)
 		return nil
 	}

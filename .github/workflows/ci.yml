@@ -62,6 +62,42 @@ jobs:
       # forms: any difference in exit code, results or document fails.
       - run: go run ./tools/differential -php php -go ./sigilbase-verify
 
+      # A change to both repositories lands as two branches of one name (the
+      # verifier repository's differential job checks out this repository's
+      # branch of its name when there is one). The reverse: when the
+      # verifier repository has a branch named like this one, this branch is
+      # held to it too, its verify.php over its corpus, and the mirror must
+      # be exact.
+      - id: verifier-ref
+        run: |
+          branch="${{ github.head_ref || github.ref_name }}"
+          if git ls-remote --exit-code --heads https://github.com/sigilbase/verifier.git "$branch" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "ref=$branch" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.verifier-ref.outputs.found == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: sigilbase/verifier
+          ref: ${{ steps.verifier-ref.outputs.ref }}
+          path: upstream-verifier
+
+      - if: steps.verifier-ref.outputs.found == 'true'
+        run: |
+          go run ./tools/differential -php php -verify-php verify.php \
+            -go "$GITHUB_WORKSPACE/sigilbase-verify" \
+            -corpus upstream-verifier/corpus/expected.json -dir upstream-verifier
+
+      - if: steps.verifier-ref.outputs.found == 'true'
+        run: |
+          for f in corpus vectors keys/sigilbase.json keys/tsa-roots.pem keys/receipt-keys.json result.schema.json; do
+            diff -r -q "upstream-verifier/$f" "$f"
+          done
+          diff -q upstream-verifier/verify.php reference/verify.php
+
       # A fixed budget of seeded mutants through both; the nightly job runs
       # a larger one. A disagreement is kept as a bundle for the fixture set.
       - run: go run ./tools/mutate -php php -go ./sigilbase-verify -budget 300 -seed 1 -disagreements disagreements

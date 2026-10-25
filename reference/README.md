@@ -11,7 +11,7 @@ tests on its own and so that the two can be compared with a plain diff:
 | --- | --- |
 | `corpus/` | `corpus/` |
 | `vectors/` | `vectors/` |
-| `keys/sigilbase.json`, `keys/tsa-roots.pem` | `keys/` |
+| `keys/sigilbase.json`, `keys/receipt-keys.json`, `keys/tsa-roots.pem` | `keys/` |
 | `result.schema.json` | `result.schema.json` |
 | `reference/verify.php` | `verify.php` |
 
@@ -25,9 +25,8 @@ must be exact at matching versions. `tools/check-upstream.sh <ref>` clones
 the verifier repository at a tag or commit and diffs every mirrored file;
 run it before tagging a release, and whenever the corpus changes upstream.
 
-The copy here is the 1.6.0 candidate of `verify.php` from the verifier
-repository's `go-verifier` branch, which carries the 1.6.0 hardening (a
-hostile field type or date no longer stops it before a verdict), the
-compiled timestamp roots and the `verifier_name` field. Until the verifier
-repository publishes v1.6.0, `check-upstream.sh` against `main` there will
-report differences; against the `go-verifier` branch it reports none.
+The copy here is the 1.8.0 candidate of `verify.php` from the verifier
+repository's `registry-receipts` branch, which adds format 1.7 and the
+`--receipt` and `--reconcile` modes. Until that branch is merged,
+`check-upstream.sh` against `main` there will report differences; against
+`registry-receipts` it reports none.
