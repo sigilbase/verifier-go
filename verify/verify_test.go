@@ -567,3 +567,17 @@ func TestATrustedAnchorAfterASealDeadlineTurnsAMissingRecordIntoAFailure(t *test
 		}
 	}
 }
+
+// msd_seconds must be exactly the integer 900, compared as PHP's !== does
+// on the decoded value: 900.0, 9e2 and "900" are not it.
+func TestMSDSecondsIsStrictlyTheInteger900(t *testing.T) {
+	for literal, want := range map[string]bool{`900`: true, `900.0`: false, `9e2`: false, `"900"`: false, `901`: false, `null`: false} {
+		v, err := cjson.Parse([]byte(`{"msd_seconds":` + literal + `}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := intIs(v.Field("msd_seconds"), msdSecondsRequired); got != want {
+			t.Errorf("msd_seconds %s: accepted %v, want %v", literal, got, want)
+		}
+	}
+}
