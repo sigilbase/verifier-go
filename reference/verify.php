@@ -5060,10 +5060,9 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
             $highestNamed = max($highestNamed, $named->sequence);
         }
 
-        $version = $inForceAt($acceptance['received_at'], $acceptance['sequence']);
-        $rules = $version === null ? null : $read['policies'][$version]['rules'];
-        $msd = $rules instanceof stdClass && is_int($rules->msd_seconds ?? null) ? $rules->msd_seconds : null;
-        $sealBy = $msd === null || $acceptance['received_at'] === null ? null : $acceptance['received_at']->modify("+{$msd} seconds");
+        // MSD_SECONDS, not the policy's value: a policy naming another
+        // already fails rule 4, and every seal_by is signed with it.
+        $sealBy = $acceptance['received_at']?->modify('+'.MSD_SECONDS.' seconds');
 
         if ($named instanceof stdClass && is_int($named->sequence ?? null) && $named->sequence > $registryTo
             && ($acceptance['received_at'] === null || $registryLastAt === null || $acceptance['received_at'] >= $registryLastAt)
@@ -5092,10 +5091,7 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         $count = $claimed[$sequence] ?? 0;
         $eventAt = parse_rfc3339($event->received_at ?? null);
 
-        $version = $inForceAt($eventAt, PHP_INT_MAX);
-        $rules = $version === null ? null : $read['policies'][$version]['rules'];
-        $msd = $rules instanceof stdClass && is_int($rules->msd_seconds ?? null) ? $rules->msd_seconds : null;
-        $sealBy = $msd === null || $eventAt === null ? null : $eventAt->modify("+{$msd} seconds");
+        $sealBy = $eventAt?->modify('+'.MSD_SECONDS.' seconds');
 
         if ($count === 0 && $sequence > $highestNamed && $eventAt !== null && $read['last_received_at'] !== null && $eventAt > $read['last_received_at']
             && ! $dueBy($sealBy, $logCompleteAt)) {

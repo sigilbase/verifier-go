@@ -1221,16 +1221,13 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		}
 		// An acceptance past the registry bundle's range is missing from it
 		// when it came before the bundle's last event, or when its event was
-		// due to be sealed (received_at plus the policy's msd_seconds) by the
-		// time the bundle was known complete; otherwise it may be later.
-		var msd *cjson.Value
-		if policy := inForceAt(acceptance.receivedAt, acceptance.receivedOK, acceptance.sequence); policy != nil && isObject(policy.rules) && isInt(policy.rules.Field("msd_seconds")) {
-			msd = policy.rules.Field("msd_seconds")
-		}
-		sealByKnown := msd != nil && acceptance.receivedOK
+		// due to be sealed (received_at plus MSD_SECONDS, not the policy's
+		// value: a policy naming another already fails rule 4, and every
+		// seal_by is signed with it) by the time the bundle was known
+		// complete; otherwise it may be later.
 		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > registryTo &&
 			(!acceptance.receivedOK || !registryLastOK || !acceptance.receivedAt.Before(registryLastAt)) &&
-			!dueBy(acceptance.receivedAt, msdSeconds(msd), sealByKnown, registryCompleteAt, registryCompleteOK) {
+			!dueBy(acceptance.receivedAt, msdSecondsRequired, acceptance.receivedOK, registryCompleteAt, registryCompleteOK) {
 			r.setUnconfirmedReason("ACCEPTED_UNMATCHED")
 			r.unconfirmed(fmt.Sprintf("ACCEPTED_UNMATCHED: decision %d accepts registry event %d, past the registry bundle's range: export the registry again, after the log", acceptance.sequence, named.Field("sequence").Int), ResultScope)
 			continue
@@ -1250,17 +1247,12 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 	}
 	for _, sequence := range registry.order {
 		count := claimed[sequence]
-		// The event's own seal deadline, under the policy in force at its
-		// received_at (any earlier policy record): when that had passed, with
-		// the grace, by the time the log was known complete, its decision
-		// belongs in the log.
+		// The event's own seal deadline, received_at plus MSD_SECONDS: when
+		// that had passed, with the grace, by the time the log was known
+		// complete, its decision belongs in the log.
 		eventAt, ok := parseRFC3339Value(registry.events[sequence].Field("received_at"))
-		var eventMSD *cjson.Value
-		if policy := inForceAt(eventAt, ok, math.MaxInt64); policy != nil && isObject(policy.rules) && isInt(policy.rules.Field("msd_seconds")) {
-			eventMSD = policy.rules.Field("msd_seconds")
-		}
 		if count == 0 && sequence > highestNamed && ok && read.lastOK && eventAt.After(read.lastReceived) &&
-			!dueBy(eventAt, msdSeconds(eventMSD), eventMSD != nil, logCompleteAt, logCompleteOK) {
+			!dueBy(eventAt, msdSecondsRequired, ok, logCompleteAt, logCompleteOK) {
 			r.setUnconfirmedReason("PARENT_UNMATCHED")
 			r.unconfirmed(fmt.Sprintf("PARENT_UNMATCHED: registry event %d was received after the log's last record; its decision may be past the log bundle's range: export the log again, then the registry", sequence), ResultScope)
 			continue
@@ -1434,9 +1426,10 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 
 // msdSecondsRequired is MSD_SECONDS: every registry policy's msd_seconds,
 // the platform's maximum seal delay and the offset every receipt's seal_by
-// is signed with. Both seal bounds in reconcile read it from the policy, so
-// a policy may not name another; it must be exactly the integer 900 (a
-// float or a string fails, as PHP's strict comparison does).
+// is signed with. A policy may not name another: rule 4 holds it to
+// exactly the integer 900 (a float or a string fails, as PHP's strict
+// comparison does), and both seal bounds in reconcile use this constant,
+// never a policy's value.
 const msdSecondsRequired = 900
 
 // The notice period a policy under "notice" may ask for: an hour to a
@@ -1468,13 +1461,6 @@ func completeAt(b *verifiedBundle) (time.Time, bool) {
 		}
 	}
 	return latest, ok
-}
-
-func msdSeconds(v *cjson.Value) int64 {
-	if v == nil {
-		return 0
-	}
-	return v.Int
 }
 
 // sealGraceSeconds is SEAL_GRACE_SECONDS: a record is held missing from a
