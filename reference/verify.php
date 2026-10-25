@@ -122,7 +122,7 @@ declare(strict_types=1);
  * verifier/format compatibility table. This file makes no network calls
  * of any kind.
  */
-const VERIFIER_VERSION = '1.8.0';
+const VERIFIER_VERSION = '1.8.1';
 
 /**
  * How this implementation names itself in a report, beside its version and
@@ -2428,8 +2428,10 @@ function collect_referenced_sequences(mixed $node, array &$into): void
         return;
     }
 
+    // get_object_vars() hands a member named "7" back under the integer key
+    // 7, so the key is cast before any string function sees it.
     foreach (get_object_vars($node) as $key => $value) {
-        if (is_int($value) && str_ends_with($key, 'sequence')) {
+        if (is_int($value) && str_ends_with((string) $key, 'sequence')) {
             $into[$value] = true;
         }
 
@@ -3763,13 +3765,13 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
             $eventResource = $event->resource ?? null;
             $isSigning = is_string($eventResource) && str_starts_with($eventResource, 'signing:');
 
-            $sequenceKey = $event->seq ?? -1;
+            // Only an integer seq can be wanted: a float, string or larger
+            // number used as a key would raise a deprecation or warning
+            // ahead of the --json document, and never reaches
+            // $eventBySequence below anyway.
+            $sequenceKey = $event->seq ?? null;
 
-            if (is_array($sequenceKey) || is_object($sequenceKey)) {
-                $sequenceKey = -1;
-            }
-
-            if (! $isSigning && ! isset($wantedSequences[$sequenceKey])) {
+            if (! $isSigning && ! (is_int($sequenceKey) && isset($wantedSequences[$sequenceKey]))) {
                 continue;
             }
 

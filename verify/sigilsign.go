@@ -78,11 +78,10 @@ func (r *run) checkSigilSign(b bundle.Reader) *hardError {
 			}
 			resource := event.Field("resource")
 			isSigning := isString(resource) && strings.HasPrefix(resource.Str, "signing:")
-			if !isSigning {
-				key, ok := arrayKey(event.Field("seq"))
-				if !ok || !wanted[key] {
-					continue
-				}
+			// Only an integer seq can be wanted, as in verify.php: any
+			// other seq never reaches eventBySequence below.
+			if seq := event.Field("seq"); !isSigning && !(isInt(seq) && wanted[seq.Int]) {
+				continue
 			}
 			if seq := event.Field("seq"); isInt(seq) {
 				eventBySequence[seq.Int] = event
