@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sigilbase/verifier-go/internal/cjson"
 	"github.com/sigilbase/verifier-go/internal/difftest"
 	"github.com/sigilbase/verifier-go/keys"
 )
@@ -445,5 +446,64 @@ func TestPHPHelpers(t *testing.T) {
 	}
 	if phpFloatString(1e30) != "1.0E+30" || phpFloatString(1.5) != "1.5" || phpFloatString(math.Copysign(0, -1)) != "-0" || phpFloatString(1.0) != "1" || phpFloatString(0.1) != "0.1" {
 		t.Errorf("float strings: %s %s %s %s %s", phpFloatString(1e30), phpFloatString(1.5), phpFloatString(math.Copysign(0, -1)), phpFloatString(1.0), phpFloatString(0.1))
+	}
+}
+
+// Receipt shape (verify.php 1.8.0): hashes match exactly, with no trailing
+// newline, and the optional fields are checked when present.
+func TestReceiptShapeExactAndOptionalFields(t *testing.T) {
+	data, err := os.ReadFile("../corpus/registry/receipts/06-conflict.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := cjson.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := doc.Field("body")
+	if p := receiptShapeProblems(body); len(p) != 0 {
+		t.Fatalf("corpus receipt has shape problems: %v", p)
+	}
+	for field, value := range map[string]*cjson.Value{
+		"key_id":          stringValue(body.Field("key_id").Str + "\n"),
+		"request_digest":  stringValue(body.Field("request_digest").Str + "\n"),
+		"policy_hash":     stringValue("sha256:nothex"),
+		"reasons":         {Kind: cjson.Array, Arr: []*cjson.Value{intValue(1)}},
+		"idempotency_key": intValue(5),
+	} {
+		mutated := &cjson.Value{Kind: cjson.Object, Obj: cjson.NewObject()}
+		for i := 0; i < body.Obj.Len(); i++ {
+			k, v := body.Obj.At(i)
+			mutated.Obj.Set(k, v)
+		}
+		mutated.Obj.Set(field, value)
+		if p := receiptShapeProblems(mutated); len(p) != 1 || !strings.HasPrefix(p[0], field) {
+			t.Errorf("%s: problems %v", field, p)
+		}
+	}
+}
+
+// --receipts lists regular *.json files only, without a leading dot, in
+// byte order; a subdirectory named *.json is skipped.
+func TestReceiptFilesListing(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"b.json", "A.json", ".hidden.json", "c.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "sub.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := receiptFiles(dir + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, p := range paths {
+		names = append(names, filepath.Base(p))
+	}
+	if strings.Join(names, ",") != "A.json,b.json" {
+		t.Errorf("listed %v", names)
 	}
 }

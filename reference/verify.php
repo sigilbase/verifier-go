@@ -4166,7 +4166,7 @@ function receipt_key_map(array $keys, string $source): array
     foreach ($keys as $key) {
         $publicKey = is_array($key) ? ($key['public_key'] ?? null) : null;
         $keyId = is_array($key) ? ($key['key_id'] ?? null) : null;
-        $raw = is_string($publicKey) && preg_match('/^[0-9a-fA-F]{64}$/', $publicKey) === 1 ? hex2bin($publicKey) : false;
+        $raw = is_string($publicKey) && preg_match('/\A[0-9a-fA-F]{64}\z/', $publicKey) === 1 ? hex2bin($publicKey) : false;
 
         if (! is_string($keyId) || $raw === false || ! hash_equals(hash('sha256', $raw), strtolower($keyId))) {
             fail_hard("{$source} has an entry whose key_id is not the SHA-256 of its public_key", EXIT_ERROR);
@@ -4228,7 +4228,7 @@ function request_digest(stdClass $event, ?string $commitmentKey): string
 
 function is_digest(mixed $value): bool
 {
-    return is_string($value) && preg_match('/^sha256:[0-9a-f]{64}$/', $value) === 1;
+    return is_string($value) && preg_match('/\Asha256:[0-9a-f]{64}\z/', $value) === 1;
 }
 
 /**
@@ -4246,7 +4246,7 @@ function receipt_shape_problems(stdClass $body): array
 
     foreach (['tenant', 'stream', 'credential'] as $field) {
         if (! is_string($body->{$field} ?? null) || $body->{$field} === '') {
-            $problems[] = "{$field} is not a string";
+            $problems[] = "{$field} is not a non-empty string";
         }
     }
 
@@ -4262,7 +4262,7 @@ function receipt_shape_problems(stdClass $body): array
         $problems[] = 'digest_kind is neither canonical nor raw';
     }
 
-    if (! is_string($body->key_id ?? null) || preg_match('/^[0-9a-f]{64}$/', $body->key_id) !== 1) {
+    if (! is_string($body->key_id ?? null) || preg_match('/\A[0-9a-f]{64}\z/', $body->key_id) !== 1) {
         $problems[] = 'key_id is not 64 hex characters';
     }
 
@@ -4272,7 +4272,7 @@ function receipt_shape_problems(stdClass $body): array
         $problems[] = 'accepted is missing';
     } elseif ($accepted !== null && (! $accepted instanceof stdClass
         || ! is_int($accepted->sequence ?? null) || $accepted->sequence < 1
-        || ! is_string($accepted->entry_hash ?? null) || preg_match('/^[0-9a-f]{64}$/', $accepted->entry_hash) !== 1
+        || ! is_string($accepted->entry_hash ?? null) || preg_match('/\A[0-9a-f]{64}\z/', $accepted->entry_hash) !== 1
         || ! is_digest($accepted->request_digest ?? null))) {
         $problems[] = 'accepted is neither null nor {sequence, entry_hash, request_digest}';
     }
@@ -4283,6 +4283,18 @@ function receipt_shape_problems(stdClass $body): array
 
     if (property_exists($body, 'commitment_key') && $body->commitment_key !== null && ! is_string($body->commitment_key)) {
         $problems[] = 'commitment_key is neither a string nor null';
+    }
+
+    if (property_exists($body, 'idempotency_key') && ! is_string($body->idempotency_key)) {
+        $problems[] = 'idempotency_key is not a string';
+    }
+
+    if (property_exists($body, 'policy_hash') && ! is_digest($body->policy_hash)) {
+        $problems[] = 'policy_hash is not a sha256: digest';
+    }
+
+    if (property_exists($body, 'reasons') && (! is_array($body->reasons) || ! array_is_list($body->reasons) || array_filter($body->reasons, static fn (mixed $reason): bool => ! is_string($reason)) !== [])) {
+        $problems[] = 'reasons is not a list of strings';
     }
 
     $receivedAt = parse_rfc3339($body->received_at ?? null);
@@ -4574,6 +4586,13 @@ function read_registry_log(array $records): array
         $payload = $record->payload ?? null;
         $lastReceivedAt = parse_rfc3339($record->received_at ?? null) ?? $lastReceivedAt;
 
+        if (str_starts_with($action, 'ingress.')) {
+            $outcome = substr($action, strlen('ingress.'));
+            $credential = $payload instanceof stdClass ? bundle_text($payload->credential ?? null) : '';
+            $outcomes[$outcome] = ($outcomes[$outcome] ?? 0) + 1;
+            $byCredential[$credential][$outcome] = ($byCredential[$credential][$outcome] ?? 0) + 1;
+        }
+
         if (! $payload instanceof stdClass) {
             if (str_starts_with($action, 'ingress.') || str_starts_with($action, 'policy.') || str_starts_with($action, 'credential')) {
                 note("decision record {$sequence} ({$action}) has no payload in this bundle; it is not read");
@@ -4652,8 +4671,6 @@ function read_registry_log(array $records): array
 
         $outcome = substr($action, strlen('ingress.'));
         $credential = bundle_text($payload->credential ?? null);
-        $outcomes[$outcome] = ($outcomes[$outcome] ?? 0) + 1;
-        $byCredential[$credential][$outcome] = ($byCredential[$credential][$outcome] ?? 0) + 1;
 
         if ($outcome !== 'accepted') {
             continue;
@@ -4855,9 +4872,11 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         foreach ($policy['windows'] as $window) {
             $closeAt = $window instanceof stdClass ? parse_rfc3339($window->close_at ?? null) : null;
 
+            $windowKey = $window instanceof stdClass ? bundle_text($window->key ?? null) : '';
+
             if ($closeAt === null || $lastReceivedAt === null
                 || $closeAt->modify('+'.WINDOW_CLOSE_GRACE_SECONDS.' seconds') >= $lastReceivedAt
-                || isset($closed[$version][$window->key])) {
+                || isset($closed[$version][$windowKey])) {
                 continue;
             }
 
@@ -4871,7 +4890,7 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
             }
 
             if ($inForce === $version) {
-                reason_fail('WINDOW_CLOSE', 'key ['.bundle_text($window->key ?? null)."] of policy version {$version} closed at ".bundle_text($window->close_at)." and has no window.closed");
+                reason_fail('WINDOW_CLOSE', "key [{$windowKey}] of policy version {$version} closed at ".bundle_text($window->close_at).' and has no window.closed');
             }
         }
     }
@@ -4889,6 +4908,8 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         $document = read_receipt_document($path);
 
         if ($document === null) {
+            $checked++;
+
             continue;
         }
 
@@ -5160,7 +5181,17 @@ if ($reconcileMode && $receiptFile === null && ! $consistencyMode && count($targ
             fail_hard("--receipts directory [{$receiptsDir}] does not exist", EXIT_ERROR);
         }
 
-        $receiptPaths = glob(rtrim($receiptsDir, '/\\').DIRECTORY_SEPARATOR.'*.json') ?: [];
+        $receiptsDir = rtrim($receiptsDir, '/\\');
+
+        // Every regular file whose name ends in .json and does not start
+        // with a dot, in byte order of its name: no pattern expansion of the
+        // directory's own name, no subdirectory.
+        foreach (scandir($receiptsDir) ?: [] as $name) {
+            if (! str_starts_with($name, '.') && str_ends_with($name, '.json') && is_file($receiptsDir.DIRECTORY_SEPARATOR.$name)) {
+                $receiptPaths[] = $receiptsDir.DIRECTORY_SEPARATOR.$name;
+            }
+        }
+
         usort($receiptPaths, static fn (string $a, string $b): int => strcmp(basename($a), basename($b)));
     }
 

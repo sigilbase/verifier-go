@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -41,24 +40,16 @@ var registryOutcomes = map[string]bool{
 	"refused_paused": true, "refused_archived": true, "throttled": true,
 }
 
-// The anchored patterns verify.php applies with preg_match. PCRE's "$"
-// also matches before one trailing newline, so each is applied to the
-// value with that newline removed (pcreDollar), as PHP effectively does.
+// The exact patterns verify.php applies with preg_match and \A...\z: no
+// trailing newline is let through (Go's ^ and $ without the m flag are
+// already \A and \z).
 var (
 	hexAny64Pattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 	hexLow64Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	digestPattern   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
-// pcreDollar strips the single trailing LF PCRE's "$" lets through.
-func pcreDollar(s string) string {
-	if strings.HasSuffix(s, "\n") && !strings.HasSuffix(s, "\n\n") {
-		return s[:len(s)-1]
-	}
-	return s
-}
-
-func pregMatch(re *regexp.Regexp, s string) bool { return re.MatchString(pcreDollar(s)) }
+func pregMatch(re *regexp.Regexp, s string) bool { return re.MatchString(s) }
 
 // ---- receipt keys -------------------------------------------------------
 
@@ -252,7 +243,7 @@ func receiptShapeProblems(body *cjson.Value) []string {
 	}
 	for _, field := range []string{"tenant", "stream", "credential"} {
 		if v := body.Field(field); !isString(v) || v.Str == "" {
-			problems = append(problems, field+" is not a string")
+			problems = append(problems, field+" is not a non-empty string")
 		}
 	}
 	if o := body.Field("outcome"); !isString(o) || !registryOutcomes[o.Str] {
@@ -286,6 +277,26 @@ func receiptShapeProblems(body *cjson.Value) []string {
 	if hasMember(body, "commitment_key") {
 		if c := body.Field("commitment_key"); !nullish(c) && !isString(c) {
 			problems = append(problems, "commitment_key is neither a string nor null")
+		}
+	}
+	if hasMember(body, "idempotency_key") && !isString(body.Field("idempotency_key")) {
+		problems = append(problems, "idempotency_key is not a string")
+	}
+	if hasMember(body, "policy_hash") && !isDigest(body.Field("policy_hash")) {
+		problems = append(problems, "policy_hash is not a sha256: digest")
+	}
+	if hasMember(body, "reasons") {
+		reasons := body.Field("reasons")
+		ok := isArray(reasons)
+		if ok {
+			for _, reason := range reasons.Arr {
+				if !isString(reason) {
+					ok = false
+				}
+			}
+		}
+		if !ok {
+			problems = append(problems, "reasons is not a list of strings")
 		}
 	}
 	receivedAt, receivedOK := parseRFC3339Value(body.Field("received_at"))
@@ -770,6 +781,19 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 			out.lastReceived, out.lastOK = t, true
 		}
 
+		// Every ingress.* record is counted, its payload present or not
+		// (credential '' when there is none).
+		if strings.HasPrefix(action, "ingress.") {
+			credential := ""
+			if isObject(payload) {
+				credential = text(payload.Field("credential"))
+			}
+			outcome := action[len("ingress."):]
+			out.counts.Decisions++
+			out.counts.Outcomes.add(outcome)
+			out.counts.Credentials.add(credential, outcome)
+		}
+
 		if !isObject(payload) {
 			if strings.HasPrefix(action, "ingress.") || strings.HasPrefix(action, "policy.") || strings.HasPrefix(action, "credential") {
 				r.note(fmt.Sprintf("decision record %d (%s) has no payload in this bundle; it is not read", sequence, action))
@@ -840,9 +864,6 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 
 		outcome := action[len("ingress."):]
 		credential := text(payload.Field("credential"))
-		out.counts.Decisions++
-		out.counts.Outcomes.add(outcome)
-		out.counts.Credentials.add(credential, outcome)
 
 		if outcome != "accepted" {
 			continue
@@ -893,31 +914,6 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 		p.windows = windows
 	}
 	return out
-}
-
-// phpOffset is the array key PHP uses when a decoded value indexes an
-// array, as text: a string as it is, an int in decimal, a bool as 1 or 0,
-// null as the empty string, a float truncated. The second result is false
-// for an array or an object, which PHP refuses as an offset (a TypeError
-// in isset).
-func phpOffset(v *cjson.Value) (string, bool) {
-	if nullish(v) {
-		return "", true
-	}
-	switch v.Kind {
-	case cjson.String:
-		return v.Str, true
-	case cjson.Int:
-		return strconv.FormatInt(v.Int, 10), true
-	case cjson.Bool:
-		if v.Bool {
-			return "1", true
-		}
-		return "0", true
-	case cjson.Float:
-		return strconv.FormatInt(phpcompat.FloatToInt(v.Float), 10), true
-	}
-	return "", false
 }
 
 // reconcileRegistry is reconcile_registry: the reconcile rules (FORMAT.md,
@@ -1054,9 +1050,10 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 				if !ok || !closeAt.Add(windowCloseGrace).Before(read.lastReceived) {
 					continue
 				}
-				// verify.php's isset() on an array or object key throws;
-				// here such a window is simply not closed.
-				if offset, ok := phpOffset(window.Field("key")); ok && closed[p.version][offset] {
+				// The window's key read as text: an array, an object or an
+				// absent key is ''.
+				windowKey := text(window.Field("key"))
+				if closed[p.version][windowKey] {
 					continue
 				}
 
@@ -1068,7 +1065,7 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 					}
 				}
 				if inForce != nil && inForce.version == p.version {
-					r.reasonFail("WINDOW_CLOSE", fmt.Sprintf("key [%s] of policy version %d closed at %s and has no window.closed", text(window.Field("key")), p.version, text(window.Field("close_at"))), ResultContent)
+					r.reasonFail("WINDOW_CLOSE", fmt.Sprintf("key [%s] of policy version %d closed at %s and has no window.closed", windowKey, p.version, text(window.Field("close_at"))), ResultContent)
 				}
 			}
 		}
@@ -1088,6 +1085,8 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 			return read.counts, checked, herr
 		}
 		if doc == nil {
+			// Unreadable or not a receipt: RECEIPT_SHAPE, and checked.
+			checked++
 			continue
 		}
 		body := doc.body
@@ -1115,23 +1114,29 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 	return read.counts, checked, nil
 }
 
-// receiptFiles lists the receipts of a --receipts directory as verify.php's
-// glob(<dir>/*.json) finds them (a leading dot is never matched by "*"), in
-// strcmp order of their names.
+// receiptFiles lists the receipts of a --receipts directory as verify.php
+// does with scandir: every regular file (symbolic links followed, as
+// is_file does) whose name ends in .json and does not start with a dot, in
+// strcmp order of the name. The directory's own name is never a pattern,
+// and a subdirectory is skipped.
 func receiptFiles(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+	base := strings.TrimRight(dir, `/\`)
+	entries, err := os.ReadDir(base)
 	if err != nil {
 		return nil, err
 	}
 	var names []string
 	for _, e := range entries {
 		name := e.Name()
-		if strings.HasSuffix(name, ".json") && !strings.HasPrefix(name, ".") {
-			names = append(names, name)
+		if !strings.HasSuffix(name, ".json") || strings.HasPrefix(name, ".") {
+			continue
 		}
+		if info, err := os.Stat(base + string(os.PathSeparator) + name); err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		names = append(names, name)
 	}
 	sort.Strings(names)
-	base := strings.TrimRight(dir, `/\`)
 	paths := make([]string, len(names))
 	for i, n := range names {
 		paths[i] = base + string(os.PathSeparator) + n
