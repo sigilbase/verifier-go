@@ -1,0 +1,27 @@
+{
+    "body": {
+        "v": "sigilbase-receipt/1",
+        "tenant": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+        "stream": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "decision_seq": 6,
+        "outcome": "conflict",
+        "commitment_key": "acme-q3",
+        "policy_hash": "sha256:5515e7fbb045c7110e6b1fff67fb1a2dab240a77ddd65311387daad0b99cea5f",
+        "request_digest": "sha256:2ba78661b7d252966a9c09971a0713997957a3018b28d1134088a33034e5e7fe",
+        "digest_kind": "canonical",
+        "credential": "sgb_filer000000001",
+        "accepted": {
+            "sequence": 1,
+            "entry_hash": "eab7a2b38db16a72942860c0f20402b16aec9e5d81ad8915f61ac71913d7ca60",
+            "request_digest": "sha256:99d66bc517c555e3396e3b90e456b66eb58786b44d56ea35c7810e7a49fa9500"
+        },
+        "received_at": "2026-07-01T09:12:00.000000Z",
+        "seal_by": "2026-07-01T09:27:00.000000Z",
+        "reasons": [
+            "digest_mismatch"
+        ],
+        "key_id": "dac073e0123bdea59dd9b3bda9cf6037f63aca82627d7abcd5c4ac29dd74003e",
+        "signed_at": "2026-07-01T09:12:00.250000Z"
+    },
+    "signature": "k5l2R7qJ3q7DSqLnuemSJCia/8zc+t7vSC76sPmbfBs1Z6YO5yOWLBGLFtgW0KXDOK8EJxQuimYdurax63lGAw=="
+}

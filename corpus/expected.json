@@ -1,5 +1,5 @@
 {
-    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go). Fixtures named collection-* are generated in the verifier repository by tools/build-corpus-collection.php from tests/CollectionHistory.php under the same key. Fixtures named shape-* are derived from valid.zip by tools/build-corpus-shape.php in the verifier repository: the same bundle in a shape the format allows but the generator never writes (an absent null field, a field the format does not name).",
+    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go). Fixtures named collection-* are generated in the verifier repository by tools/build-corpus-collection.php from tests/CollectionHistory.php under the same key. Fixtures named shape-* are derived from valid.zip by tools/build-corpus-shape.php in the verifier repository: the same bundle in a shape the format allows but the generator never writes (an absent null field, a field the format does not name). Receipt and registry fixtures live under registry/, generated in the verifier repository by tools/build-corpus-registry.php from tests/RegistryHistory.php under the same key and the corpus receipt key. A receipts case runs default_options, then its own options or else receipt_options, then --receipt <receipt> and its bundles; a reconcile case runs default_options, receipt_options and --reconcile <registry> <log>, with --receipts <dir> when it names one. Each also records reason, the first failed check's code, and receipts cases their subject.",
     "default_options": [
         "--keys",
         "corpus/keys.json",
@@ -817,6 +817,391 @@
             "size": 41,
             "result": "fail",
             "exit": 1
+        }
+    },
+    "receipt_options": [
+        "--receipt-keys",
+        "corpus/registry/receipt-keys.json"
+    ],
+    "receipts": {
+        "valid-accepted": {
+            "receipt": "corpus/registry/receipts/04-accepted.json",
+            "bundles": [
+                "corpus/registry/valid-registry.zip",
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
+        },
+        "valid-replay": {
+            "receipt": "corpus/registry/receipts/05-replay.json",
+            "bundles": [
+                "corpus/registry/valid-registry.zip",
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
+        },
+        "valid-conflict": {
+            "receipt": "corpus/registry/receipts/06-conflict.json",
+            "bundles": [
+                "corpus/registry/valid-registry.zip",
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
+        },
+        "valid-invalid": {
+            "receipt": "corpus/registry/receipts/07-invalid.json",
+            "bundles": [
+                "corpus/registry/valid-registry.zip",
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
+        },
+        "valid-refused_early": {
+            "receipt": "corpus/registry/receipts/09-refused_early.json",
+            "bundles": [
+                "corpus/registry/valid-registry.zip",
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
+        },
+        "valid-accepted-2": {
+            "receipt": "corpus/registry/receipts/11-accepted.json",
+            "bundles": [
+                "corpus/registry/valid-registry.zip",
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
+        },
+        "valid-refused_late": {
+            "receipt": "corpus/registry/receipts/13-refused_late.json",
+            "bundles": [
+                "corpus/registry/valid-registry.zip",
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
+        },
+        "accepted-alone": {
+            "receipt": "corpus/registry/receipts/04-accepted.json",
+            "bundles": [],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "pass",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "not_checked"
+        },
+        "conflict-log-only": {
+            "receipt": "corpus/registry/receipts/06-conflict.json",
+            "bundles": [
+                "corpus/registry/valid-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "not_checked"
+        },
+        "tampered-field": {
+            "receipt": "corpus/registry/receipt-tampered.json",
+            "bundles": [],
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "pass",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "RECEIPT_SIGNATURE",
+            "subject": "not_checked"
+        },
+        "key-outside-window": {
+            "receipt": "corpus/registry/receipts/04-accepted.json",
+            "bundles": [],
+            "options": [
+                "--receipt-keys",
+                "corpus/registry/receipt-keys-retired.json"
+            ],
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "fail",
+                "timestamps": "pass",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "RECEIPT_KEY_WINDOW",
+            "subject": "not_checked"
+        },
+        "unknown-key": {
+            "receipt": "corpus/registry/receipts/04-accepted.json",
+            "bundles": [],
+            "options": [],
+            "result": "unconfirmed",
+            "exit": 3,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "unconfirmed",
+                "timestamps": "pass",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "RECEIPT_KEY_UNKNOWN",
+            "subject": "not_checked"
+        },
+        "seal-deadline-missed": {
+            "receipt": "corpus/registry/receipts/04-accepted.json",
+            "bundles": [
+                "corpus/registry/late-seal-registry.zip",
+                "corpus/registry/late-seal-log.zip"
+            ],
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "MSD_BREACH",
+            "subject": "checked"
+        }
+    },
+    "reconcile": {
+        "valid": {
+            "registry": "corpus/registry/valid-registry.zip",
+            "log": "corpus/registry/valid-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "decisions": 7,
+            "receipts_checked": 7
+        },
+        "deleted-decision": {
+            "registry": "corpus/registry/deleted-decision-registry.zip",
+            "log": "corpus/registry/deleted-decision-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "PARENT_UNMATCHED",
+            "decisions": 6,
+            "receipts_checked": 7
+        },
+        "extra-event": {
+            "registry": "corpus/registry/extra-event-registry.zip",
+            "log": "corpus/registry/extra-event-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "PARENT_UNMATCHED",
+            "decisions": 7,
+            "receipts_checked": 7
+        },
+        "double-acceptance": {
+            "registry": "corpus/registry/double-acceptance-registry.zip",
+            "log": "corpus/registry/double-acceptance-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "DOUBLE_ACCEPTANCE",
+            "decisions": 8,
+            "receipts_checked": 7
+        },
+        "missing-close": {
+            "registry": "corpus/registry/missing-close-registry.zip",
+            "log": "corpus/registry/missing-close-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "WINDOW_CLOSE",
+            "decisions": 7,
+            "receipts_checked": 7
+        },
+        "revoked-credential": {
+            "registry": "corpus/registry/revoked-credential-registry.zip",
+            "log": "corpus/registry/revoked-credential-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "CREDENTIAL_NOT_VALID",
+            "decisions": 7,
+            "receipts_checked": 7
+        },
+        "valid-without-receipts": {
+            "registry": "corpus/registry/valid-registry.zip",
+            "log": "corpus/registry/valid-log.zip",
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "decisions": 7,
+            "receipts_checked": 0
+        },
+        "unlogged-receipt": {
+            "registry": "corpus/registry/valid-registry.zip",
+            "log": "corpus/registry/valid-log.zip",
+            "receipts": "corpus/registry/receipts-unlogged",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "RECEIPT_NOT_LOGGED",
+            "decisions": 7,
+            "receipts_checked": 8
+        },
+        "swapped-bundles": {
+            "registry": "corpus/registry/valid-log.zip",
+            "log": "corpus/registry/valid-registry.zip",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "NOT_DECISION_LOG",
+            "decisions": 0,
+            "receipts_checked": 0
         }
     }
 }

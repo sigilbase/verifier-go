@@ -23,6 +23,7 @@ var knownFormats = []string{
 	"sigilbase-evidence/1.4",
 	"sigilbase-evidence/1.5",
 	"sigilbase-evidence/1.6",
+	"sigilbase-evidence/1.7",
 }
 
 const zeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -647,10 +648,10 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 		return nil, herr
 	}
 
-	// ---- collection records (format 1.6) --------------------------------------
+	// ---- collection records (format 1.6; 1.7 is strictly additive and keeps them)
 
 	var collection *CollectionSummary
-	if format == "sigilbase-evidence/1.6" {
+	if format == "sigilbase-evidence/1.6" || format == "sigilbase-evidence/1.7" {
 		summary, herr := r.checkCollectionRecords(b, rangeFrom)
 		if herr != nil {
 			return nil, herr

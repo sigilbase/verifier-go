@@ -17,6 +17,12 @@ type run struct {
 	tsaRoots         string
 	tsaRootsSource   string
 
+	// receiptKeys is the trusted receipt key set; reason is the code of the
+	// first failed or unconfirmed receipt or registry check.
+	receiptKeys       *ReceiptKeySet
+	receiptKeysSource string
+	reason            *string
+
 	results  *Results
 	failures []string
 	notes    []string
@@ -38,6 +44,12 @@ func newRun(opts *Options) *run {
 	} else {
 		r.tsaRoots = EmbeddedTSARoots()
 		r.tsaRootsSource = "built-in trusted set"
+	}
+	r.receiptKeys = opts.ReceiptKeys
+	r.receiptKeysSource = opts.ReceiptKeysSource
+	if r.receiptKeys == nil {
+		r.receiptKeys = EmbeddedReceiptKeys()
+		r.receiptKeysSource = "built-in trusted set"
 	}
 	return r
 }

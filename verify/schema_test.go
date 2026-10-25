@@ -69,6 +69,10 @@ func TestReportsFitTheSchemaShape(t *testing.T) {
 				mustHave(t, name, parsed, "bundles", "consistency")
 			case "consistency-recorded-root":
 				mustHave(t, name, parsed, "bundle", "recorded")
+			case "receipt":
+				mustHave(t, name, parsed, "receipt", "bundles", "reason")
+			case "reconcile":
+				mustHave(t, name, parsed, "bundles", "counts", "receipts_checked", "reason")
 			}
 		}
 	}
@@ -88,7 +92,14 @@ func TestReportsFitTheSchemaShape(t *testing.T) {
 			check(name, ConsistencyRecorded("../corpus/"+fx.Bundle+".zip", fx.Root, fx.Size, opts))
 		}
 	}
+	for _, name := range corpus.SortedReceipts() {
+		check("receipt "+name, runCorpusArgs(t, corpus.ReceiptArgs(name)))
+	}
+	for _, name := range corpus.SortedReconcile() {
+		check("reconcile "+name, runCorpusArgs(t, corpus.ReconcileArgs(name)))
+	}
 	check("missing path", Bundle("../corpus/does-not-exist.zip", Options{}))
+	check("missing receipt", Receipt("../corpus/does-not-exist.json", nil, Options{}))
 }
 
 func mustHave(t *testing.T, name string, doc map[string]any, keys ...string) {
