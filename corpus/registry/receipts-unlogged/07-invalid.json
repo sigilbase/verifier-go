@@ -6,7 +6,7 @@
         "decision_seq": 7,
         "outcome": "invalid",
         "commitment_key": null,
-        "policy_hash": "sha256:5515e7fbb045c7110e6b1fff67fb1a2dab240a77ddd65311387daad0b99cea5f",
+        "policy_hash": "sha256:08a1f9f7231cb7cf70076455ce31d60a60da06ccacb85ffa0ccb1b0cf34a2210",
         "request_digest": "sha256:8824e6778378af0088f421c9adeb1e8a6965642ec0d684e6ece8eba2cf03153f",
         "digest_kind": "raw",
         "credential": "sgb_filer000000001",
@@ -19,5 +19,5 @@
         "key_id": "dac073e0123bdea59dd9b3bda9cf6037f63aca82627d7abcd5c4ac29dd74003e",
         "signed_at": "2026-07-01T09:13:00.250000Z"
     },
-    "signature": "jaVQAKRC8P7eV1kN5G15PQusdcuKIzZmG529VP2uaW/8WM8MIt4c24e9Z99hLSV4BNlSCbaTx7/qFmFKJELTCA=="
+    "signature": "R/5jzu0w5KsvLVXWHcNuwLQe0l2zJLdJ58xZ6lB4G34gNcT0RftvdVLq9fabOP+IV6Zrh4VAQbS3lOb+8rEsDQ=="
 }

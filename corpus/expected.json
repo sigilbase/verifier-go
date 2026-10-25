@@ -1049,6 +1049,24 @@
             },
             "reason": "MSD_BREACH",
             "subject": "checked"
+        },
+        "registry-replay-own-deadline": {
+            "receipt": "corpus/registry/receipts/05-replay.json",
+            "bundles": [
+                "corpus/registry/late-seal-registry.zip",
+                "corpus/registry/late-seal-log.zip"
+            ],
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "subject": "checked"
         }
     },
     "reconcile": {
@@ -1152,6 +1170,74 @@
             },
             "reason": "CREDENTIAL_NOT_VALID",
             "decisions": 7,
+            "receipts_checked": 7
+        },
+        "late-seal": {
+            "registry": "corpus/registry/late-seal-registry.zip",
+            "log": "corpus/registry/late-seal-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "MSD_BREACH",
+            "decisions": 7,
+            "receipts_checked": 7
+        },
+        "late-acceptance": {
+            "registry": "corpus/registry/late-acceptance-registry.zip",
+            "log": "corpus/registry/late-acceptance-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "DECISION_POLICY",
+            "decisions": 8,
+            "receipts_checked": 7
+        },
+        "frozen-amended": {
+            "registry": "corpus/registry/frozen-amended-registry.zip",
+            "log": "corpus/registry/frozen-amended-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "POLICY_AMENDMENT",
+            "decisions": 7,
+            "receipts_checked": 7
+        },
+        "live-log": {
+            "registry": "corpus/registry/live-log-registry.zip",
+            "log": "corpus/registry/live-log-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": null,
+            "decisions": 8,
             "receipts_checked": 7
         },
         "valid-without-receipts": {

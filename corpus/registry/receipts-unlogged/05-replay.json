@@ -6,7 +6,7 @@
         "decision_seq": 5,
         "outcome": "replay",
         "commitment_key": "acme-q3",
-        "policy_hash": "sha256:5515e7fbb045c7110e6b1fff67fb1a2dab240a77ddd65311387daad0b99cea5f",
+        "policy_hash": "sha256:08a1f9f7231cb7cf70076455ce31d60a60da06ccacb85ffa0ccb1b0cf34a2210",
         "request_digest": "sha256:99d66bc517c555e3396e3b90e456b66eb58786b44d56ea35c7810e7a49fa9500",
         "digest_kind": "canonical",
         "credential": "sgb_filer000000001",
@@ -20,5 +20,5 @@
         "key_id": "dac073e0123bdea59dd9b3bda9cf6037f63aca82627d7abcd5c4ac29dd74003e",
         "signed_at": "2026-07-01T09:11:00.250000Z"
     },
-    "signature": "g69mxfcbi6aahK15fgAhDm1DTmdhbgCZrqtZlfr/Es8xMo+w1ylKHxphAneCpobpzwMR1mIB04x6RfuXvsbODQ=="
+    "signature": "SpXVzqTsIY3JDBLAvY4EfSOOVclzOepgjBE/ui+uULWTgJWG0UBY290SZI55I+84CGCqD6adCpbOB3ta8eEGDQ=="
 }

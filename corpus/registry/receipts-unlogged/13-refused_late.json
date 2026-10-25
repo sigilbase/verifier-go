@@ -6,7 +6,7 @@
         "decision_seq": 13,
         "outcome": "refused_late",
         "commitment_key": "beta-q3",
-        "policy_hash": "sha256:5515e7fbb045c7110e6b1fff67fb1a2dab240a77ddd65311387daad0b99cea5f",
+        "policy_hash": "sha256:08a1f9f7231cb7cf70076455ce31d60a60da06ccacb85ffa0ccb1b0cf34a2210",
         "request_digest": "sha256:2642ac4b249df077fa1f2d15be0fc1f0849200434618faf852d2d1a48ea21464",
         "digest_kind": "canonical",
         "credential": "sgb_filer000000001",
@@ -16,5 +16,5 @@
         "key_id": "dac073e0123bdea59dd9b3bda9cf6037f63aca82627d7abcd5c4ac29dd74003e",
         "signed_at": "2026-07-01T11:20:00.250000Z"
     },
-    "signature": "bQ8aUSijAT+clM7OIZOl1E94LQPLQYAuP2LUAgJ4BrjXiBBI8REEezLnikVAolW+hz3BS7WrbkLyD6Hy/gU3CA=="
+    "signature": "1MRYd/zbJ+FdO/H54TTUPwEWDCL9pN5uEjOkEiFha4V7Bq8SPr2fPh8tVWcDrF+zxL0/rj5pkMxAX0atrmCAAg=="
 }

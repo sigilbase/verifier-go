@@ -6,7 +6,7 @@
         "decision_seq": 11,
         "outcome": "accepted",
         "commitment_key": "gamma-q3",
-        "policy_hash": "sha256:5515e7fbb045c7110e6b1fff67fb1a2dab240a77ddd65311387daad0b99cea5f",
+        "policy_hash": "sha256:08a1f9f7231cb7cf70076455ce31d60a60da06ccacb85ffa0ccb1b0cf34a2210",
         "request_digest": "sha256:82337e11683e88e1590d80021e4f4a80a6ec1ce9d90cdffdceac0a9bade7c087",
         "digest_kind": "canonical",
         "credential": "sgb_second00000002",
@@ -20,5 +20,5 @@
         "key_id": "dac073e0123bdea59dd9b3bda9cf6037f63aca82627d7abcd5c4ac29dd74003e",
         "signed_at": "2026-07-01T11:05:00.250000Z"
     },
-    "signature": "1Y4BV0eK62lY3gX+eLkta+InNEODOCq1RHsWleZHu0aLv1389WMY94KZFDVNyQkJKkDSSlc9Bx+I0y2jntYoAA=="
+    "signature": "a3i99uv6RL3AikTzxqquu9VytmzCesk1autx0LP7/fANS6tMXYdujdwUYX295tpJUeiJqcFA3sYLH/MlsR78Dw=="
 }
