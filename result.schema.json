@@ -105,13 +105,13 @@
             "verifier_sha256": { "type": "string", "description": "The SHA-256 of the file that ran: verify.php itself, or the sigilbase-verify binary (the word unavailable when the binary could not be read back)." }
         },
         "reason": {
-            "description": "Under --receipt and --reconcile: the code of the first receipt or registry check that failed or was unconfirmed (FORMAT.md, \"Receipts and registries\"), or null when none did. BUNDLE: a bundle given did not verify.",
+            "description": "Under --receipt and --reconcile: the code of the first receipt or registry check that failed, or, when none failed, of the first that was unconfirmed (FORMAT.md, \"Receipts and registries\"); null when neither. BUNDLE: a bundle given did not verify.",
             "oneOf": [
                 {
                     "type": "string",
                     "enum": [
                         "BUNDLE", "RECEIPT_SHAPE", "RECEIPT_KEY_UNKNOWN", "RECEIPT_SIGNATURE", "RECEIPT_KEY_WINDOW", "RECEIPT_SUBJECT", "MSD_BREACH",
-                        "NOT_DECISION_LOG", "LOG_NOT_DENSE", "FIRST_NOT_POLICY", "POLICY_HASH", "ACCEPTED_UNMATCHED", "PARENT_UNMATCHED",
+                        "NOT_DECISION_LOG", "LOG_NOT_DENSE", "FIRST_NOT_POLICY", "POLICY_HASH", "POLICY_AMENDMENT", "DECISION_POLICY", "ACCEPTED_UNMATCHED", "PARENT_UNMATCHED",
                         "DOUBLE_ACCEPTANCE", "WINDOW_CLOSE", "CREDENTIAL_NOT_VALID", "RECEIPT_NOT_LOGGED"
                     ]
                 },

@@ -69,9 +69,12 @@ jobs:
       # held to it too, its verify.php over its corpus, and the mirror must
       # be exact.
       - id: verifier-ref
+        # The branch name reaches the shell as data, never as script text.
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          branch="${{ github.head_ref || github.ref_name }}"
-          if git ls-remote --exit-code --heads https://github.com/sigilbase/verifier.git "$branch" >/dev/null 2>&1; then
+          branch="$BRANCH"
+          if git ls-remote --exit-code --heads https://github.com/sigilbase/verifier.git "refs/heads/$branch" >/dev/null 2>&1; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "ref=$branch" >> "$GITHUB_OUTPUT"
           else

@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -139,12 +140,31 @@ func parseReceiptKeySet(data []byte, source string) (*ReceiptKeySet, error) {
 
 // ---- the run's reason ---------------------------------------------------
 
-// setReason is set_reason: the first code recorded is the run's reason.
+// setReason is set_reason for a failed check: the first failure's code is
+// the run's reason.
 func (r *run) setReason(code string) {
 	if r.reason == nil {
 		c := code
 		r.reason = &c
 	}
+}
+
+// setUnconfirmedReason is set_reason(..., unconfirmed: true): the first
+// unconfirmed check's code, the run's reason when nothing failed.
+func (r *run) setUnconfirmedReason(code string) {
+	if r.unconfirmedReason == nil {
+		c := code
+		r.unconfirmedReason = &c
+	}
+}
+
+// runReason is run_reason: the first failure's code, else the first
+// unconfirmed check's, else nil.
+func (r *run) runReason() *string {
+	if r.reason != nil {
+		return r.reason
+	}
+	return r.unconfirmedReason
 }
 
 // reasonFail is reason_fail: a failed receipt or registry check, against
@@ -323,7 +343,7 @@ func (r *run) checkReceipt(body *cjson.Value, signature, label string) bool {
 	keyID := body.Field("key_id").Str
 	key, ok := r.receiptKeys.keys[keyID]
 	if !ok {
-		r.setReason("RECEIPT_KEY_UNKNOWN")
+		r.setUnconfirmedReason("RECEIPT_KEY_UNKNOWN")
 		r.unconfirmed(fmt.Sprintf("RECEIPT_KEY_UNKNOWN: %s is signed by receipt key %s, which is not in the trusted receipt key set", label, keyID), ResultIdentity)
 		return false
 	}
@@ -493,7 +513,7 @@ func decisionRecordDifferences(record, body *cjson.Value) []string {
 	if !isObject(payload) {
 		return append(differences, "payload")
 	}
-	for _, field := range []string{"outcome", "request_digest", "digest_kind", "credential", "commitment_key"} {
+	for _, field := range []string{"outcome", "request_digest", "digest_kind", "credential", "commitment_key", "policy_hash"} {
 		if !strictEqual(payload.Field(field), body.Field(field)) {
 			differences = append(differences, field)
 		}
@@ -546,10 +566,12 @@ func (r *run) checkReceiptSubject(body *cjson.Value, stream, log *verifiedBundle
 		}
 	}
 
-	// The seal deadline: the accepted event for accepted and replay, the
-	// decision record otherwise.
+	// The seal deadline: the accepted event for an acceptance, and for a
+	// standard stream's replay (one without decision_seq); the decision
+	// record for everything a log records, a registry's replay included.
 	outcome := text(body.Field("outcome"))
-	deadlineOnEvent := !nullish(accepted) && (outcome == "accepted" || outcome == "replay")
+	deadlineOnEvent := !nullish(accepted) &&
+		(outcome == "accepted" || (outcome == "replay" && !isInt(body.Field("decision_seq"))))
 	view := log
 	var sequence *cjson.Value = body.Field("decision_seq")
 	if deadlineOnEvent {
@@ -663,7 +685,7 @@ func Receipt(receiptPath string, targets []string, opts Options) *Report {
 	}
 
 	rep.Bundles = bundles
-	rep.Reason = r.reason
+	rep.Reason = r.runReason()
 	return r.finish(rep, r.results.exitCode())
 }
 
@@ -730,6 +752,9 @@ type registryPolicy struct {
 	hash        string
 	effectiveAt time.Time
 	effectiveOK bool
+	action      string
+	recordedAt  time.Time
+	recordedOK  bool
 	rules       *cjson.Value
 	count       *cjson.Value
 	parts       *cjson.Value
@@ -746,6 +771,15 @@ type registryAcceptance struct {
 	key        *string
 }
 
+// registryDecision is one ingress.* record with a payload.
+type registryDecision struct {
+	sequence   int64
+	outcome    string
+	payload    *cjson.Value
+	receivedAt time.Time
+	receivedOK bool
+}
+
 type registryClose struct {
 	sequence int64
 	payload  *cjson.Value
@@ -756,6 +790,7 @@ type registryLog struct {
 	policies     []*registryPolicy
 	policyByVer  map[int64]*registryPolicy
 	accepted     []*registryAcceptance
+	decisions    []*registryDecision
 	closes       []registryClose
 	counts       ReconcileCounts
 	problems     map[string][]string
@@ -810,10 +845,12 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 			p := &registryPolicy{
 				version:  version.Int,
 				sequence: sequence,
+				action:   action,
 				hash:     text(payload.Field("policy_hash")),
 				rules:    payload.Field("policy"),
 			}
 			p.effectiveAt, p.effectiveOK = parseRFC3339Value(payload.Field("effective_at"))
+			p.recordedAt, p.recordedOK = parseRFC3339Value(record.Field("received_at"))
 			if w := payload.Field("windows"); isObject(w) {
 				p.count = w.Field("count")
 				p.parts = w.Field("parts")
@@ -864,6 +901,10 @@ func (r *run) readRegistryLog(log *verifiedBundle, order []int64) *registryLog {
 
 		outcome := action[len("ingress."):]
 		credential := text(payload.Field("credential"))
+
+		decision := &registryDecision{sequence: sequence, outcome: outcome, payload: payload}
+		decision.receivedAt, decision.receivedOK = parseRFC3339Value(record.Field("received_at"))
+		out.decisions = append(out.decisions, decision)
 
 		if outcome != "accepted" {
 			continue
@@ -946,11 +987,124 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		r.reasonFail("POLICY_HASH", message, ResultContent)
 	}
 
-	// Rule 4: acceptances and registry events match one to one.
+	// Each version's windows by key, once (a later window of the same key
+	// replaces an earlier one).
+	windowsByKey := map[int64]map[string]*cjson.Value{}
+	for _, p := range read.policies {
+		for _, window := range p.windows {
+			if isObject(window) && isString(window.Field("key")) {
+				if windowsByKey[p.version] == nil {
+					windowsByKey[p.version] = map[string]*cjson.Value{}
+				}
+				windowsByKey[p.version][window.Field("key").Str] = window
+			}
+		}
+	}
+
+	// Rule 4: every policy is this registry's, and amended only as the one
+	// before it allows: never under frozen, under notice no sooner than its
+	// notice period after the amendment was recorded.
+	var previous *registryPolicy
+	for _, p := range read.policies {
+		if !isObject(p.rules) || !strEq(p.rules.Field("registry"), publicID) {
+			r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d is not this registry's (its registry is not %s)", p.version, publicID), ResultContent)
+		}
+		if previous == nil {
+			if p.version != 1 || p.action != "policy.committed" {
+				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("the first policy record is version %d, %s, not version 1 committed", p.version, p.action), ResultContent)
+			}
+		} else {
+			previousRules := previous.rules
+			notice := previousRules.Field("notice_seconds")
+			switch {
+			case previous.version == math.MaxInt64 || p.version != previous.version+1 || p.action != "policy.amended":
+				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d does not amend version %d", p.version, previous.version), ResultContent)
+			case !isObject(previousRules) || !strEq(previousRules.Field("amendment"), "notice") || !isInt(notice):
+				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d cannot be amended (it is not under notice), yet version %d amends it", previous.version, p.version), ResultContent)
+			case !p.effectiveOK || !p.recordedOK || effectiveBeforeNotice(p.effectiveAt, p.recordedAt, notice.Int):
+				r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d takes effect sooner than the %d s notice its predecessor requires", p.version, notice.Int), ResultContent)
+			}
+		}
+		previous = p
+	}
+
+	// Rule 5: every decision follows the policy in force when it was made:
+	// the last policy record before it in the log whose effective_at is not
+	// after its received_at.
+	inForceAt := func(at time.Time, atOK bool, before int64) *registryPolicy {
+		var found *registryPolicy
+		for _, p := range read.policies {
+			if p.sequence < before && atOK && p.effectiveOK && !p.effectiveAt.After(at) {
+				found = p
+			}
+		}
+		return found
+	}
+	for _, decision := range read.decisions {
+		payload := decision.payload
+		at := decision.receivedAt
+		label := fmt.Sprintf("decision %d (%s)", decision.sequence, decision.outcome)
+		policy := inForceAt(at, decision.receivedOK, decision.sequence)
+		if policy == nil {
+			r.reasonFail("DECISION_POLICY", label+" was made with no policy in force", ResultContent)
+			continue
+		}
+		if !strEq(payload.Field("policy_hash"), policy.hash) {
+			r.reasonFail("DECISION_POLICY", fmt.Sprintf("%s does not name the hash of policy version %d, in force at its received_at", label, policy.version), ResultContent)
+		}
+
+		key := stringOrNil(payload.Field("commitment_key"))
+		var window *cjson.Value
+		if key != nil {
+			window = windowsByKey[policy.version][*key]
+		}
+		var openAt, closeAt time.Time
+		openOK, closeOK := false, false
+		if window != nil {
+			openAt, openOK = parseRFC3339Value(window.Field("open_at"))
+			closeAt, closeOK = parseRFC3339Value(window.Field("close_at"))
+		}
+		unknownKey := false
+		for _, reason := range iterValues(payload.Field("reasons")) {
+			if strEq(reason, "unknown_key") {
+				unknownKey = true
+			}
+		}
+		var broken bool
+		switch decision.outcome {
+		case "accepted":
+			broken = window == nil || !openOK || !closeOK || at.Before(openAt) || !at.Before(closeAt)
+		case "refused_early":
+			broken = window == nil || !openOK || !at.Before(openAt)
+		case "refused_late":
+			broken = window == nil || !closeOK || at.Before(closeAt)
+		case "invalid":
+			broken = unknownKey && window != nil
+		}
+		if broken {
+			shown := ""
+			if key != nil {
+				shown = *key
+			}
+			r.reasonFail("DECISION_POLICY", fmt.Sprintf("%s for key [%s] contradicts the windows of policy version %d", label, shown, policy.version), ResultContent)
+		}
+	}
+
+	// Rule 6: acceptances and registry events match one to one. An
+	// acceptance of an event past the registry bundle's range was made
+	// after that bundle was exported: it is noted, not checked.
+	var registryTo int64
+	if isObject(registryRange) && isInt(registryRange.Field("to")) {
+		registryTo = registryRange.Field("to").Int
+	}
 	claimed := map[int64]int{}
 	for _, acceptance := range read.accepted {
 		payload := acceptance.payload
 		named := payload.Field("accepted")
+		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > registryTo {
+			r.note(fmt.Sprintf("decision %d accepts registry event %d, after the registry bundle's range: not checked", acceptance.sequence, named.Field("sequence").Int))
+			continue
+		}
 		var event *cjson.Value
 		if isObject(named) && isInt(named.Field("sequence")) {
 			event = registry.events[named.Field("sequence").Int]
@@ -970,7 +1124,7 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		}
 	}
 
-	// Rule 5: one acceptance per key.
+	// Rule 7: one acceptance per key.
 	acceptedAt := map[string]*registryAcceptance{}
 	for _, acceptance := range read.accepted {
 		if acceptance.key == nil {
@@ -985,7 +1139,7 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		acceptedAt[key] = acceptance
 	}
 
-	// Rule 6: every window closes once, truthfully.
+	// Rule 8: every window closes once, truthfully.
 	policiesByHash := map[string]int64{}
 	for _, p := range read.policies {
 		policiesByHash[p.hash] = p.version
@@ -997,11 +1151,7 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		version, hasVersion := policiesByHash[text(payload.Field("policy_hash"))]
 		var window *cjson.Value
 		if hasVersion {
-			for _, candidate := range read.policyByVer[version].windows {
-				if isObject(candidate) && strEq(candidate.Field("key"), key) {
-					window = candidate
-				}
-			}
+			window = windowsByKey[version][key]
 		}
 		if window == nil || text(payload.Field("close_at")) != text(window.Field("close_at")) {
 			r.reasonFail("WINDOW_CLOSE", fmt.Sprintf("window.closed %d names key [%s], which its policy does not hold with that close_at", c.sequence, key), ResultContent)
@@ -1071,12 +1221,13 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		}
 	}
 
-	// Rule 7: every acceptance came from a valid credential.
+	// Rule 9: every acceptance came from a valid credential.
 	for _, message := range read.problems["CREDENTIAL_NOT_VALID"] {
 		r.reasonFail("CREDENTIAL_NOT_VALID", message, ResultContent)
 	}
 
-	// Rule 8: every receipt is logged.
+	// Rule 10: every receipt is logged, says what its record says, and was
+	// sealed by its deadline: the whole --receipt check, against both bundles.
 	checked := 0
 	for _, path := range receiptPaths {
 		label := "receipt " + filepath.Base(path)
@@ -1108,10 +1259,23 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		}
 		if len(differences) > 0 {
 			r.reasonFail("RECEIPT_NOT_LOGGED", fmt.Sprintf("%s: signed by Sigilbase, but the decision log does not hold it (%s)", label, strings.Join(differences, ", ")), ResultContent)
+			continue
 		}
+		r.checkReceiptSubject(body, registry, log)
 	}
 
 	return read.counts, checked, nil
+}
+
+// effectiveBeforeNotice is "$effective < $recorded->modify('+N seconds')",
+// computed in whole seconds and nanoseconds so that a large notice cannot
+// overflow a time.Duration.
+func effectiveBeforeNotice(effective, recorded time.Time, notice int64) bool {
+	diff := effective.Unix() - recorded.Unix()
+	if diff != notice {
+		return diff < notice
+	}
+	return effective.Nanosecond() < recorded.Nanosecond()
 }
 
 // receiptFiles lists the receipts of a --receipts directory as verify.php
@@ -1201,6 +1365,6 @@ func Reconcile(registryPath, logPath string, receiptsDir *string, opts Options) 
 	}
 	rep.Counts = &counts
 	rep.ReceiptsChecked = checked
-	rep.Reason = r.reason
+	rep.Reason = r.runReason()
 	return r.finish(rep, r.results.exitCode())
 }

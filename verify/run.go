@@ -22,6 +22,7 @@ type run struct {
 	receiptKeys       *ReceiptKeySet
 	receiptKeysSource string
 	reason            *string
+	unconfirmedReason *string
 
 	results  *Results
 	failures []string
