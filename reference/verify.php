@@ -4123,6 +4123,14 @@ const RECEIPT_VERSION = 'sigilbase-receipt/1';
 /** A window closed more than this long before the log's last record must have its close record. */
 const WINDOW_CLOSE_GRACE_SECONDS = 300;
 
+/**
+ * A checkpoint signed by its deadline commits moments later, and a timestamp
+ * authority's clock may run a little ahead: a record is held missing from a
+ * bundle only when its seal deadline came this long before the bundle was
+ * known complete. The application's own seal watch allows the same.
+ */
+const SEAL_GRACE_SECONDS = 120;
+
 /** The notice period a policy under "notice" may ask for: an hour to a hundred years. */
 const MIN_NOTICE_SECONDS = 3600;
 const MAX_NOTICE_SECONDS = 3155760000;
@@ -4822,6 +4830,11 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
     $registryCompleteAt = $completeAt($registry);
     $logCompleteAt = $completeAt($log);
 
+    // Whether a record due sealed by $sealBy belongs in a bundle known
+    // complete at $complete: its deadline, and the grace, had passed.
+    $dueBy = static fn (?DateTimeImmutable $sealBy, ?DateTimeImmutable $complete): bool => $sealBy !== null && $complete !== null
+        && $sealBy->modify('+'.SEAL_GRACE_SECONDS.' seconds') <= $complete;
+
     // Rule 1: the log is the registry's, and both histories are whole.
     if ($publicId === null || manifest_log_for($log['manifest']) !== $publicId) {
         reason_fail('NOT_DECISION_LOG', 'the second bundle is not the decision log of the first (decision_log_for does not name its public_id)');
@@ -5043,7 +5056,7 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
 
         if ($named instanceof stdClass && is_int($named->sequence ?? null) && $named->sequence > $registryTo
             && ($acceptance['received_at'] === null || $registryLastAt === null || $acceptance['received_at'] >= $registryLastAt)
-            && ($sealBy === null || $registryCompleteAt === null || $sealBy > $registryCompleteAt)) {
+            && ! $dueBy($sealBy, $registryCompleteAt)) {
             set_reason('ACCEPTED_UNMATCHED', unconfirmed: true);
             unconfirmed("ACCEPTED_UNMATCHED: decision {$acceptance['sequence']} accepts registry event {$named->sequence}, past the registry bundle's range: export the registry again, after the log", RESULT_SCOPE);
 
@@ -5068,7 +5081,13 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         $count = $claimed[$sequence] ?? 0;
         $eventAt = parse_rfc3339($event->received_at ?? null);
 
-        if ($count === 0 && $sequence > $highestNamed && $eventAt !== null && $read['last_received_at'] !== null && $eventAt > $read['last_received_at']) {
+        $version = $inForceAt($eventAt, PHP_INT_MAX);
+        $rules = $version === null ? null : $read['policies'][$version]['rules'];
+        $msd = $rules instanceof stdClass && is_int($rules->msd_seconds ?? null) ? $rules->msd_seconds : null;
+        $sealBy = $msd === null || $eventAt === null ? null : $eventAt->modify("+{$msd} seconds");
+
+        if ($count === 0 && $sequence > $highestNamed && $eventAt !== null && $read['last_received_at'] !== null && $eventAt > $read['last_received_at']
+            && ! $dueBy($sealBy, $logCompleteAt)) {
             set_reason('PARENT_UNMATCHED', unconfirmed: true);
             unconfirmed("PARENT_UNMATCHED: registry event {$sequence} was received after the log's last record; its decision may be past the log bundle's range: export the log again, then the registry", RESULT_SCOPE);
 
@@ -5211,13 +5230,12 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         // record to check against yet: unconfirmed, not unlogged. The log is
         // written in time order, so one from before its last record is
         // missing from it, as is one whose decision record was due to be
-        // sealed by the time the log was known complete (every outcome but
-        // an acceptance, whose seal_by is its event's).
-        $recordSealBy = ($body->outcome ?? null) === 'accepted' ? null : parse_rfc3339($body->seal_by ?? null);
-
+        // sealed by the time the log was known complete. Every record of a
+        // registry's log is held to its received_at plus the seal delay, the
+        // receipt's seal_by, an acceptance's included.
         if (is_int($body->decision_seq ?? null) && $body->decision_seq > $logTo
             && ($receiptAt === null || $read['last_received_at'] === null || $receiptAt >= $read['last_received_at'])
-            && ($recordSealBy === null || $logCompleteAt === null || $recordSealBy > $logCompleteAt)) {
+            && ! $dueBy(parse_rfc3339($body->seal_by ?? null), $logCompleteAt)) {
             set_reason('RECEIPT_NOT_LOGGED', unconfirmed: true);
             unconfirmed("RECEIPT_NOT_LOGGED: {$label} names decision {$body->decision_seq}, past the log bundle's range: export the log again", RESULT_SCOPE);
 

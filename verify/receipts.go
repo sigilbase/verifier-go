@@ -1224,10 +1224,10 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		if policy := inForceAt(acceptance.receivedAt, acceptance.receivedOK, acceptance.sequence); policy != nil && isObject(policy.rules) && isInt(policy.rules.Field("msd_seconds")) {
 			msd = policy.rules.Field("msd_seconds")
 		}
-		sealByUnknown := msd == nil || !acceptance.receivedOK
+		sealByKnown := msd != nil && acceptance.receivedOK
 		if isObject(named) && isInt(named.Field("sequence")) && named.Field("sequence").Int > registryTo &&
 			(!acceptance.receivedOK || !registryLastOK || !acceptance.receivedAt.Before(registryLastAt)) &&
-			(sealByUnknown || !registryCompleteOK || afterPlusSeconds(acceptance.receivedAt, msdSeconds(msd), registryCompleteAt)) {
+			!dueBy(acceptance.receivedAt, msdSeconds(msd), sealByKnown, registryCompleteAt, registryCompleteOK) {
 			r.setUnconfirmedReason("ACCEPTED_UNMATCHED")
 			r.unconfirmed(fmt.Sprintf("ACCEPTED_UNMATCHED: decision %d accepts registry event %d, past the registry bundle's range: export the registry again, after the log", acceptance.sequence, named.Field("sequence").Int), ResultScope)
 			continue
@@ -1247,7 +1247,17 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 	}
 	for _, sequence := range registry.order {
 		count := claimed[sequence]
-		if eventAt, ok := parseRFC3339Value(registry.events[sequence].Field("received_at")); count == 0 && sequence > highestNamed && ok && read.lastOK && eventAt.After(read.lastReceived) {
+		// The event's own seal deadline, under the policy in force at its
+		// received_at (any earlier policy record): when that had passed, with
+		// the grace, by the time the log was known complete, its decision
+		// belongs in the log.
+		eventAt, ok := parseRFC3339Value(registry.events[sequence].Field("received_at"))
+		var eventMSD *cjson.Value
+		if policy := inForceAt(eventAt, ok, math.MaxInt64); policy != nil && isObject(policy.rules) && isInt(policy.rules.Field("msd_seconds")) {
+			eventMSD = policy.rules.Field("msd_seconds")
+		}
+		if count == 0 && sequence > highestNamed && ok && read.lastOK && eventAt.After(read.lastReceived) &&
+			!dueBy(eventAt, msdSeconds(eventMSD), eventMSD != nil, logCompleteAt, logCompleteOK) {
 			r.setUnconfirmedReason("PARENT_UNMATCHED")
 			r.unconfirmed(fmt.Sprintf("PARENT_UNMATCHED: registry event %d was received after the log's last record; its decision may be past the log bundle's range: export the log again, then the registry", sequence), ResultScope)
 			continue
@@ -1391,16 +1401,12 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 			logTo = logRange.Field("to").Int
 		}
 		receiptAt, receiptOK := parseRFC3339Value(body.Field("received_at"))
-		// The decision record of every outcome but an acceptance (whose
-		// seal_by is its event's) was due to be sealed by seal_by.
-		var recordSealBy time.Time
-		recordSealOK := false
-		if !strEq(body.Field("outcome"), "accepted") {
-			recordSealBy, recordSealOK = parseRFC3339Value(body.Field("seal_by"))
-		}
+		// Every record of a registry's log, an acceptance's included, is held
+		// to the receipt's seal_by.
+		recordSealBy, recordSealOK := parseRFC3339Value(body.Field("seal_by"))
 		if d := body.Field("decision_seq"); isInt(d) && d.Int > logTo &&
 			(!receiptOK || !read.lastOK || !receiptAt.Before(read.lastReceived)) &&
-			(!recordSealOK || !logCompleteOK || recordSealBy.After(logCompleteAt)) {
+			!dueBy(recordSealBy, 0, recordSealOK, logCompleteAt, logCompleteOK) {
 			r.setUnconfirmedReason("RECEIPT_NOT_LOGGED")
 			r.unconfirmed(fmt.Sprintf("RECEIPT_NOT_LOGGED: %s names decision %d, past the log bundle's range: export the log again", label, d.Int), ResultScope)
 			continue
@@ -1459,6 +1465,18 @@ func msdSeconds(v *cjson.Value) int64 {
 		return 0
 	}
 	return v.Int
+}
+
+// sealGraceSeconds is SEAL_GRACE_SECONDS: a record is held missing from a
+// bundle only when its seal deadline came this long before the bundle was
+// known complete.
+const sealGraceSeconds = 120
+
+// dueBy is reconcile_registry's $dueBy for a seal deadline of at plus
+// seconds (known says whether there is one): true only when the deadline
+// and the grace had passed by complete, "sealBy + 120 s <= complete".
+func dueBy(at time.Time, seconds int64, known bool, complete time.Time, completeOK bool) bool {
+	return known && completeOK && !afterPlusSeconds(at, seconds+sealGraceSeconds, complete)
 }
 
 // afterPlusSeconds is "$at->modify('+N seconds') > $than", computed in

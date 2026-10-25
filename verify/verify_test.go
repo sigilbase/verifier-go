@@ -552,7 +552,7 @@ func TestATrustedAnchorAfterASealDeadlineTurnsAMissingRecordIntoAFailure(t *test
 		return []string{reason, r.results.Get(ResultContent), r.results.Get(ResultScope)}
 	}
 
-	after := sealBy.Unix() + 60
+	after := sealBy.Unix() + sealGraceSeconds + 60
 	before := after - 120
 	for _, c := range []struct {
 		anchoredAt *int64
