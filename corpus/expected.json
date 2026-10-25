@@ -1410,6 +1410,23 @@
             "decisions": 6,
             "receipts_checked": 7
         },
+        "truncated-accept": {
+            "registry": "corpus/registry/truncated-accept-registry.zip",
+            "log": "corpus/registry/truncated-accept-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "unconfirmed",
+                "redactions": "pass"
+            },
+            "reason": "PARENT_UNMATCHED",
+            "decisions": 5,
+            "receipts_checked": 7
+        },
         "valid-without-receipts": {
             "registry": "corpus/registry/valid-registry.zip",
             "log": "corpus/registry/valid-log.zip",
