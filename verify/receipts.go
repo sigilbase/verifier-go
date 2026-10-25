@@ -1052,6 +1052,9 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 		if !isObject(p.rules) || !strEq(p.rules.Field("registry"), publicID) {
 			r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d is not this registry's (its registry is not %s)", p.version, publicID), ResultContent)
 		}
+		if isObject(p.rules) && !intIs(p.rules.Field("msd_seconds"), msdSecondsRequired) {
+			r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d: msd_seconds is not %d", p.version, msdSecondsRequired), ResultContent)
+		}
 		if isObject(p.rules) && strEq(p.rules.Field("amendment"), "notice") && !noticeInBounds(p.rules.Field("notice_seconds")) {
 			r.reasonFail("POLICY_AMENDMENT", fmt.Sprintf("policy version %d: notice_seconds is not an integer from %d to %d", p.version, minNoticeSeconds, maxNoticeSeconds), ResultContent)
 		}
@@ -1428,6 +1431,13 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 
 	return read.counts, checked, nil
 }
+
+// msdSecondsRequired is MSD_SECONDS: every registry policy's msd_seconds,
+// the platform's maximum seal delay and the offset every receipt's seal_by
+// is signed with. Both seal bounds in reconcile read it from the policy, so
+// a policy may not name another; it must be exactly the integer 900 (a
+// float or a string fails, as PHP's strict comparison does).
+const msdSecondsRequired = 900
 
 // The notice period a policy under "notice" may ask for: an hour to a
 // hundred years (MIN_NOTICE_SECONDS, MAX_NOTICE_SECONDS).

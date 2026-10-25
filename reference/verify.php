@@ -4131,6 +4131,13 @@ const WINDOW_CLOSE_GRACE_SECONDS = 300;
  */
 const SEAL_GRACE_SECONDS = 120;
 
+/**
+ * Every registry policy's msd_seconds: the platform's maximum seal delay,
+ * the offset every receipt's seal_by is signed with. Both seal bounds in
+ * reconcile read it from the policy, so a policy may not name another.
+ */
+const MSD_SECONDS = 900;
+
 /** The notice period a policy under "notice" may ask for: an hour to a hundred years. */
 const MIN_NOTICE_SECONDS = 3600;
 const MAX_NOTICE_SECONDS = 3155760000;
@@ -4905,6 +4912,10 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
 
         if ($rules === null || ($rules->registry ?? null) !== $publicId) {
             reason_fail('POLICY_AMENDMENT', "policy version {$version} is not this registry's (its registry is not {$publicId})");
+        }
+
+        if ($rules !== null && ($rules->msd_seconds ?? null) !== MSD_SECONDS) {
+            reason_fail('POLICY_AMENDMENT', "policy version {$version}: msd_seconds is not ".MSD_SECONDS);
         }
 
         if ($rules !== null && ($rules->amendment ?? null) === 'notice' && ! notice_in_bounds($rules->notice_seconds ?? null)) {

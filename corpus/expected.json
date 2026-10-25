@@ -1427,6 +1427,23 @@
             "decisions": 5,
             "receipts_checked": 7
         },
+        "long-seal-delay": {
+            "registry": "corpus/registry/long-seal-delay-registry.zip",
+            "log": "corpus/registry/long-seal-delay-log.zip",
+            "receipts": "corpus/registry/receipts",
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            },
+            "reason": "POLICY_AMENDMENT",
+            "decisions": 7,
+            "receipts_checked": 7
+        },
         "valid-without-receipts": {
             "registry": "corpus/registry/valid-registry.zip",
             "log": "corpus/registry/valid-log.zip",
