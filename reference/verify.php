@@ -122,7 +122,7 @@ declare(strict_types=1);
  * verifier/format compatibility table. This file makes no network calls
  * of any kind.
  */
-const VERIFIER_VERSION = '1.8.0';
+const VERIFIER_VERSION = '1.8.1';
 
 /**
  * How this implementation names itself in a report, beside its version and
@@ -2428,8 +2428,10 @@ function collect_referenced_sequences(mixed $node, array &$into): void
         return;
     }
 
+    // get_object_vars() hands a member named "7" back under the integer key
+    // 7, so the key is cast before any string function sees it.
     foreach (get_object_vars($node) as $key => $value) {
-        if (is_int($value) && str_ends_with($key, 'sequence')) {
+        if (is_int($value) && str_ends_with((string) $key, 'sequence')) {
             $into[$value] = true;
         }
 

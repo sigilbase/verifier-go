@@ -1,5 +1,5 @@
 {
-    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go). Fixtures named collection-* are generated in the verifier repository by tools/build-corpus-collection.php from tests/CollectionHistory.php under the same key. Fixtures named shape-* are derived from valid.zip by tools/build-corpus-shape.php in the verifier repository: the same bundle in a shape the format allows but the generator never writes (an absent null field, a field the format does not name). Receipt and registry fixtures live under registry/, generated in the verifier repository by tools/build-corpus-registry.php from tests/RegistryHistory.php under the same key and the corpus receipt key. A receipts case runs default_options, then its own options or else receipt_options, then --receipt <receipt> and its bundles; a reconcile case runs default_options, receipt_options and --reconcile <registry> <log>, with --receipts <dir> when it names one. Each also records reason, the first failed check's code, and receipts cases their subject.",
+    "note": "Per-fixture expectations for both verifiers: the overall result, the exit code and the five results (content_integrity, signing_identity, timestamps, scope, redactions). A fixture runs with default_options unless it carries its own options. Consistency fixtures run in both forms recorded for them: two bundles (old, new) and one bundle with a recorded root and size; proof_nodes is the node count of the generated proof. Fixtures named consistency-* are generated in the verifier repository (github.com/sigilbase/verifier) by tools/build-corpus-consistency.php from tests/FixtureGenerator.php under the published corpus test key; fixtures under hostile/ by tools/hostile in the verifier-go repository (github.com/sigilbase/verifier-go). Fixtures named collection-* are generated in the verifier repository by tools/build-corpus-collection.php from tests/CollectionHistory.php under the same key. Fixtures named sigilsign-* and certificate-* are generated in the verifier repository by tools/build-corpus-sigilsign.php from tests/FixtureGenerator.php under the same key: the documents.json, signatures.json and links.json cross-checks and the certificates/ hash check. Fixtures named shape-* are derived from valid.zip by tools/build-corpus-shape.php in the verifier repository: the same bundle in a shape the format allows but the generator never writes (an absent null field, a field the format does not name). Receipt and registry fixtures live under registry/, generated in the verifier repository by tools/build-corpus-registry.php from tests/RegistryHistory.php under the same key and the corpus receipt key. A receipts case runs default_options, then its own options or else receipt_options, then --receipt <receipt> and its bundles; a reconcile case runs default_options, receipt_options and --reconcile <registry> <log>, with --receipts <dir> when it names one. Each also records reason, the first failed check's code, and receipts cases their subject.",
     "default_options": [
         "--keys",
         "corpus/keys.json",
@@ -14,6 +14,39 @@
                 "content_integrity": "pass",
                 "signing_identity": "pass",
                 "timestamps": "pass",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "certificate-missing": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "certificate-sha": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "certificate-unsafe-path": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
                 "scope": "pass",
                 "redactions": "pass"
             }
@@ -647,6 +680,116 @@
             "exit": 0,
             "results": {
                 "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-claimed-signer": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-document-sha": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-link-action": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-link-sha": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-malformed": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-no-signing-events": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-numeric-members": {
+            "result": "pass",
+            "exit": 0,
+            "results": {
+                "content_integrity": "pass",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-signature-mark": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
+                "signing_identity": "pass",
+                "timestamps": "not_checked",
+                "scope": "pass",
+                "redactions": "pass"
+            }
+        },
+        "sigilsign-viewed-other": {
+            "result": "fail",
+            "exit": 1,
+            "results": {
+                "content_integrity": "fail",
                 "signing_identity": "pass",
                 "timestamps": "not_checked",
                 "scope": "pass",
