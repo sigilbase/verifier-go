@@ -36,7 +36,7 @@ func (r *run) checkAnchors(b bundle.Reader, skipAnchors bool, checkpointHashes m
 	}
 	switch {
 	case len(anchors) > 0 && skipAnchors:
-		r.info(fmt.Sprintf("Skipping %d RFC 3161 anchor token(s) (--skip-anchors).", len(anchors)))
+		r.info(fmt.Sprintf("Skipping %s (--skip-anchors).", CountNoun(len(anchors), "RFC 3161 anchor token")))
 		r.results.demote(ResultTimestamps, StateNotChecked)
 		return nil, nil
 	case len(anchors) == 0:
@@ -131,7 +131,7 @@ func (r *run) checkCertificates(b bundle.Reader, manifest *cjson.Value) *hardErr
 	if len(records) == 0 {
 		return nil
 	}
-	r.info(fmt.Sprintf("Checking %d Certificate(s) of Evidence (certificates/)...", len(records)))
+	r.info(fmt.Sprintf("Checking %s (certificates/)...", CountNoun(len(records), "Certificate of Evidence", "Certificates of Evidence")))
 
 	for index, record := range records {
 		recordID := fmt.Sprintf("#%d", index+1)
@@ -164,7 +164,7 @@ func (r *run) checkCertificates(b bundle.Reader, manifest *cjson.Value) *hardErr
 		}
 	}
 
-	r.note(fmt.Sprintf("%d Certificate(s) of Evidence travelled with this bundle. They are documents about the evidence; the cryptographic verification above does not depend on them", len(records)))
+	r.note(fmt.Sprintf("%s travelled with this bundle. They are documents about the evidence; the cryptographic verification above does not depend on them", CountNoun(len(records), "Certificate of Evidence", "Certificates of Evidence")))
 	return nil
 }
 

@@ -3,6 +3,7 @@ package verify
 import (
 	"bytes"
 	"encoding/json"
+	"strconv"
 )
 
 // The five results and their four states, as verify.php reports them.
@@ -367,4 +368,18 @@ func (r *Report) JSON() ([]byte, error) {
 	}
 	out.WriteByte('\n')
 	return out.Bytes(), nil
+}
+
+// CountNoun is "1 problem", "2 problems": a count with its noun in the right
+// number, as verify.php's count_noun() writes it. An irregular plural is
+// passed as the third argument ("Certificates of Evidence").
+func CountNoun[T ~int | ~int64](count T, noun string, plural ...string) string {
+	n := strconv.FormatInt(int64(count), 10)
+	if count == 1 {
+		return n + " " + noun
+	}
+	if len(plural) > 0 {
+		return n + " " + plural[0]
+	}
+	return n + " " + noun + "s"
 }

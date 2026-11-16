@@ -404,7 +404,11 @@ func (r *run) checkCollectionRecords(b bundle.Reader, rangeFrom int64) (*Collect
 				case !isInt(count) || count.Int < 0:
 					r.report(fmt.Sprintf("%s: receipts.count must be a non-negative integer", label), ResultContent)
 				case anchored && count.Int != state.receipts, !anchored && count.Int < state.receipts:
-					r.report(fmt.Sprintf("%s: receipts.count is %d but %d receipt(s) precede it in the chain", label, count.Int, state.receipts), ResultContent)
+					verb := "precede"
+					if state.receipts == 1 {
+						verb = "precedes"
+					}
+					r.report(fmt.Sprintf("%s: receipts.count is %d but %s %s it in the chain", label, count.Int, CountNoun(state.receipts, "receipt"), verb), ResultContent)
 				}
 			}
 
@@ -535,7 +539,7 @@ func (r *run) checkCollectionRecords(b bundle.Reader, rangeFrom int64) (*Collect
 
 	for _, resource := range order {
 		state := streams[resource]
-		r.note(fmt.Sprintf("stream %s: %d receipt(s) chained, %d gap(s) declared, %d settlement record(s)", state.key, state.receipts, len(state.gaps), state.settlements))
+		r.note(fmt.Sprintf("stream %s: %s chained, %s declared, %s", state.key, CountNoun(state.receipts, "receipt"), CountNoun(len(state.gaps), "gap"), CountNoun(state.settlements, "settlement record")))
 	}
 
 	summary.Streams = len(streams)

@@ -101,10 +101,10 @@ func (a *authenticatedSet) each(fn func(hash string, record *cjson.Value) bool) 
 // event. Every condition must hold, or the absence fails.
 func (r *run) checkDeclarations(b bundle.Reader, format, stream string, rangeFrom, rangeTo int64, absent []int64, entryHashBySequence map[int64]string, absenceKinds map[int64]string) *hardError {
 	count := len(absent)
-	r.info(fmt.Sprintf("Checking declarations for %d absent payload(s)...", count))
+	r.info(fmt.Sprintf("Checking declarations for %s...", CountNoun(count, "absent payload")))
 
 	if format != "sigilbase-evidence/1.5" && format != "sigilbase-evidence/1.6" && format != "sigilbase-evidence/1.7" {
-		r.report(fmt.Sprintf("this bundle is %s and carries %d absent payload(s). Formats before sigilbase-evidence/1.5 do not carry the declarations that destroyed them, so the absences cannot be verified. Export the range again from Sigilbase to get a bundle that can be.", format, count), ResultRedactions)
+		r.report(fmt.Sprintf("this bundle is %s and carries %s. Formats before sigilbase-evidence/1.5 do not carry the declarations that destroyed them, so the absences cannot be verified. Export the range again from Sigilbase to get a bundle that can be.", format, CountNoun(count, "absent payload")), ResultRedactions)
 		return nil
 	}
 
