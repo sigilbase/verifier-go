@@ -122,7 +122,7 @@ declare(strict_types=1);
  * verifier/format compatibility table. This file makes no network calls
  * of any kind.
  */
-const VERIFIER_VERSION = '1.8.1';
+const VERIFIER_VERSION = '1.8.2';
 
 /**
  * How this implementation names itself in a report, beside its version and
@@ -356,6 +356,14 @@ $trustedTsaRootsSource = 'built-in trusted set';
  * All human-readable progress goes through here so --quiet and --json can
  * silence it wholesale.
  */
+/**
+ * "1 problem", "2 problems": a count with its noun in the right number.
+ */
+function count_noun(int $count, string $noun, ?string $plural = null): string
+{
+    return $count.' '.($count === 1 ? $noun : ($plural ?? $noun.'s'));
+}
+
 function out(string $text): void
 {
     global $quiet, $jsonMode;
@@ -1880,7 +1888,7 @@ function signing_key_window_problems(array $key, string $sealedAtValue): array
             $problems[] = "the manifest's created_at for the signing key is unparseable, so the key window cannot be checked";
         } elseif ($sealedAt < $keyCreatedAt) {
             $problems[] = sprintf(
-                'created_at %s is before the signing key was created (%s) — the key had no authority yet',
+                'created_at %s is before the signing key was created (%s): the key had no authority yet',
                 $sealedAtValue,
                 $key['created_at'],
             );
@@ -1894,7 +1902,7 @@ function signing_key_window_problems(array $key, string $sealedAtValue): array
             $problems[] = "the manifest's retired_at for the signing key is unparseable, so the key window cannot be checked";
         } elseif ($sealedAt > $keyRetiredAt) {
             $problems[] = sprintf(
-                "created_at %s is after the signing key's retired_at %s — a retired key signed this checkpoint",
+                "created_at %s is after the signing key's retired_at %s: a retired key signed this checkpoint",
                 $sealedAtValue,
                 $key['retired_at'],
             );
@@ -2025,7 +2033,7 @@ function check_declarations(
 
     $count = count($absentSequences);
 
-    out("Checking declarations for {$count} absent payload(s)...\n");
+    out('Checking declarations for '.count_noun($count, 'absent payload')."...\n");
 
     // A bundle older than 1.5 carries no declarations at all, so an absent
     // payload in one cannot be checked against anything. Saying so plainly
@@ -2033,7 +2041,7 @@ function check_declarations(
     // and the fix is to export it again.
     if (! in_array($format, ['sigilbase-evidence/1.5', 'sigilbase-evidence/1.6', 'sigilbase-evidence/1.7'], true)) {
         report(
-            "this bundle is {$format} and carries {$count} absent payload(s). Formats before "
+            "this bundle is {$format} and carries ".count_noun($count, 'absent payload').". Formats before "
             .'sigilbase-evidence/1.5 do not carry the declarations that destroyed them, so the absences cannot be '
             .'verified. Export the range again from Sigilbase to get a bundle that can be.',
             RESULT_REDACTIONS,
@@ -2870,7 +2878,7 @@ function check_collection_records(string $dir, string $eventsPath, int $rangeFro
                     if (! is_int($receiptCount) || $receiptCount < 0) {
                         report("{$label}: receipts.count must be a non-negative integer");
                     } elseif ($anchored ? $receiptCount !== $state['receipts'] : $receiptCount < $state['receipts']) {
-                        report("{$label}: receipts.count is {$receiptCount} but {$state['receipts']} receipt(s) precede it in the chain");
+                        report("{$label}: receipts.count is {$receiptCount} but ".count_noun($state['receipts'], 'receipt').($state['receipts'] === 1 ? ' precedes' : ' precede').' it in the chain');
                     }
                 }
 
@@ -3008,11 +3016,11 @@ function check_collection_records(string $dir, string $eventsPath, int $rangeFro
 
     foreach ($streams as $state) {
         note(sprintf(
-            'stream %s: %d receipt(s) chained, %d gap(s) declared, %d settlement record(s)',
+            'stream %s: %s chained, %s declared, %s',
             $state['key'],
-            $state['receipts'],
-            count($state['gaps']),
-            $state['settlements'],
+            count_noun($state['receipts'], 'receipt'),
+            count_noun(count($state['gaps']), 'gap'),
+            count_noun($state['settlements'], 'settlement record'),
         ));
     }
 
@@ -3095,7 +3103,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
 
     out("Stream: {$streamId}\n");
     out("Range:  {$rangeFrom}..{$rangeTo}\n");
-    out('Keys:   '.count($trustedKeys)." trusted signing key(s) in manifest\n\n");
+    out('Keys:   '.count_noun(count($trustedKeys), 'trusted signing key')." in manifest\n\n");
 
     // ---- redactions.json (1.2, optional) -------------------------------------
 
@@ -3111,7 +3119,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         $redactionRecords = $redactionsDocument instanceof stdClass ? ($redactionsDocument->redactions ?? null) : null;
 
         if (! is_array($redactionRecords)) {
-            report('redactions.json is present but malformed — expected a "redactions" list');
+            report('redactions.json is present but malformed: expected a "redactions" list');
         } else {
             foreach ($redactionRecords as $record) {
                 $declaredSequence = $record instanceof stdClass ? ($record->sequence ?? null) : null;
@@ -3251,7 +3259,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         }
 
         if ($sequence !== $expectedSequence) {
-            report("sequence {$sequence}: expected sequence {$expectedSequence} here — an event was deleted, inserted, or reordered");
+            report("sequence {$sequence}: expected sequence {$expectedSequence} here: an event was deleted, inserted, or reordered");
         }
 
         // Payload hash: recompute from the payload content itself — except
@@ -3270,9 +3278,9 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
             report("sequence {$sequence}: unknown payload_state ".json_encode($payloadState));
         } elseif ($payloadState === 'redacted' || ! $payloadPresent) {
             if ($payloadPresent) {
-                report("sequence {$sequence}: payload_state says redacted but a payload is present — the bundle contradicts itself");
+                report("sequence {$sequence}: payload_state says redacted but a payload is present: the bundle contradicts itself");
             } elseif ($payloadState !== 'redacted') {
-                report("sequence {$sequence}: payload is absent but not marked payload_state \"redacted\" — absence must be declared, never implied");
+                report("sequence {$sequence}: payload is absent but not marked payload_state \"redacted\": absence must be declared, never implied");
             } else {
                 // Held for the declaration check. redactions.json is an
                 // index, not authority: it says an absence was declared,
@@ -3291,7 +3299,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
             }
         } else {
             if ($declaration !== null) {
-                report("sequence {$sequence}: redactions.json declares this payload redacted but it is present — the bundle contradicts itself");
+                report("sequence {$sequence}: redactions.json declares this payload redacted but it is present: the bundle contradicts itself");
             }
 
             try {
@@ -3299,7 +3307,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                 $payloadHash = hash('sha256', $canonicalPayload);
 
                 if (! hash_equals(strtolower(bundle_text($event->payload_hash ?? '')), $payloadHash)) {
-                    report("sequence {$sequence}: payload_hash does not match the payload content — the payload was modified");
+                    report("sequence {$sequence}: payload_hash does not match the payload content: the payload was modified");
                 }
             } catch (RuntimeException $exception) {
                 report("sequence {$sequence}: payload cannot be canonicalised ({$exception->getMessage()})");
@@ -3308,7 +3316,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
 
         // Chain link: each event must reference the previous entry hash.
         if ($prevHash !== null && ($event->prev_hash ?? null) !== $prevHash) {
-            report("sequence {$sequence}: prev_hash does not match the previous entry hash — the chain is broken here");
+            report("sequence {$sequence}: prev_hash does not match the previous entry hash: the chain is broken here");
         }
 
         // Entry hash: recompute the v1 preimage from the event's own fields.
@@ -3336,7 +3344,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         }
 
         if ($recomputed !== null && ! hash_equals(strtolower(bundle_text($event->entry_hash ?? '')), $recomputed)) {
-            report("sequence {$sequence}: entry_hash does not recompute from the stored fields — a field was modified");
+            report("sequence {$sequence}: entry_hash does not recompute from the stored fields: a field was modified");
         }
 
         $entryHash = strtolower(bundle_text($event->entry_hash ?? ''));
@@ -3410,7 +3418,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
     $lastSequence = $expectedSequence - 1;
 
     if ($lastSequence !== $rangeTo) {
-        report("events end at sequence {$lastSequence} but the manifest declares {$rangeTo} — trailing events are missing");
+        report("events end at sequence {$lastSequence} but the manifest declares {$rangeTo}: trailing events are missing");
     }
 
     if ($eventCount === 0) {
@@ -3443,7 +3451,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         }
 
         if ($from !== $expectedFrom) {
-            report("checkpoint {$from}..{$to}: expected the range to start at {$expectedFrom} — a checkpoint is missing or reordered");
+            report("checkpoint {$from}..{$to}: expected the range to start at {$expectedFrom}: a checkpoint is missing or reordered");
         }
 
         // Checkpoint hash: recompute the v1 preimage.
@@ -3467,12 +3475,12 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         $declaredHash = strtolower(bundle_text($checkpoint->checkpoint_hash ?? ''));
 
         if ($recomputedHash !== null && ! hash_equals($declaredHash, $recomputedHash)) {
-            report("checkpoint {$from}..{$to}: checkpoint_hash does not recompute from its fields — the checkpoint was modified");
+            report("checkpoint {$from}..{$to}: checkpoint_hash does not recompute from its fields: the checkpoint was modified");
         }
 
         // Chain link between checkpoints.
         if ($prevCheckpointHash !== null && ($checkpoint->prev_checkpoint ?? null) !== $prevCheckpointHash) {
-            report("checkpoint {$from}..{$to}: prev_checkpoint does not match the previous checkpoint hash — a checkpoint was removed or replaced");
+            report("checkpoint {$from}..{$to}: prev_checkpoint does not match the previous checkpoint hash: a checkpoint was removed or replaced");
         }
 
         // Signature: Ed25519 over the raw checkpoint hash, key must be trusted.
@@ -3493,7 +3501,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
             $keySources[$fingerprint] = 'bundle only';
 
             unconfirmed(
-                "checkpoint {$from}..{$to}: signed by key {$fingerprint}, which is not in the ".$trustedSetSource
+                "checkpoint {$from}..{$to}: signed by key {$fingerprint}, which is not among the ".$trustedSetSource
                 .' - the bundle is internally consistent, but nothing here establishes that Sigilbase produced it',
                 RESULT_IDENTITY,
             );
@@ -3531,7 +3539,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
             && sodium_crypto_sign_verify_detached($signature, $message, $publicKey);
 
         if (! $signatureValid) {
-            report("checkpoint {$from}..{$to}: the Ed25519 signature does not verify — the signature is forged or the checkpoint was modified");
+            report("checkpoint {$from}..{$to}: the Ed25519 signature does not verify: the signature is forged or the checkpoint was modified");
         }
 
         // Merkle root: rebuild from the entry hashes of the covered events.
@@ -3590,7 +3598,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         $anchors = is_object($anchorDocument) && is_array($anchorDocument->anchors ?? null) ? $anchorDocument->anchors : [];
 
         if ($anchors !== [] && $skipAnchors) {
-            out('Skipping '.count($anchors)." RFC 3161 anchor token(s) (--skip-anchors).\n");
+            out('Skipping '.count_noun(count($anchors), 'RFC 3161 anchor token')." (--skip-anchors).\n");
             demote(RESULT_TIMESTAMPS, 'not_checked');
         } elseif ($anchors === []) {
             demote(RESULT_TIMESTAMPS, 'not_checked');
@@ -3675,7 +3683,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                     $providerName = is_string($anchor->provider_name ?? null) ? $anchor->provider_name : bundle_text($anchor->provider ?? 'unknown');
                     $jurisdiction = is_string($anchor->jurisdiction ?? null) ? " ({$anchor->jurisdiction})" : '';
 
-                    note("{$label}: the exporter recorded this token as issued by a qualified trust service provider — {$providerName}{$jurisdiction}. Informational: the verdict rests on the cryptographic checks alone");
+                    note("{$label}: the exporter recorded this token as issued by a qualified trust service provider: {$providerName}{$jurisdiction}. Informational: the verdict rests on the cryptographic checks alone");
                 }
             }
         }
@@ -3686,7 +3694,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
     $certificateRecords = is_array($manifest->certificates ?? null) ? $manifest->certificates : [];
 
     if ($certificateRecords !== []) {
-        out('Checking '.count($certificateRecords)." Certificate(s) of Evidence (certificates/)...\n");
+        out('Checking '.count_noun(count($certificateRecords), 'Certificate of Evidence', 'Certificates of Evidence')." (certificates/)...\n");
 
         foreach ($certificateRecords as $index => $record) {
             $recordId = is_string($record->id ?? null) ? $record->id : ('#'.($index + 1));
@@ -3713,7 +3721,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
             }
         }
 
-        note(count($certificateRecords).' Certificate(s) of Evidence travelled with this bundle. They are documents about the evidence; the cryptographic verification above does not depend on them');
+        note(count_noun(count($certificateRecords), 'Certificate of Evidence', 'Certificates of Evidence').' travelled with this bundle. They are documents about the evidence; the cryptographic verification above does not depend on them');
     }
 
     // ---- documents.json / signatures.json / links.json (format 1.4, optional) -
@@ -3794,7 +3802,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         $documentRecords = $documentsDocument instanceof stdClass ? ($documentsDocument->documents ?? null) : null;
 
         if (! is_array($documentRecords)) {
-            report('documents.json is present but malformed — expected a "documents" list');
+            report('documents.json is present but malformed: expected a "documents" list');
         } else {
             $checkedVersions = 0;
 
@@ -3856,7 +3864,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         $signatureRecords = $signaturesDocument instanceof stdClass ? ($signaturesDocument->signatures ?? null) : null;
 
         if (! is_array($signatureRecords)) {
-            report('signatures.json is present but malformed — expected a "signatures" list');
+            report('signatures.json is present but malformed: expected a "signatures" list');
         } else {
             $checkedSignatures = 0;
 
@@ -3874,7 +3882,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                 $signingEvents = $eventsBySigningResource['signing:'.$signingId] ?? [];
 
                 if ($signingEvents === []) {
-                    report("{$label} has no events in this bundle — a stated signing must exist in the chain");
+                    report("{$label} has no events in this bundle: a stated signing must exist in the chain");
 
                     continue;
                 }
@@ -3916,7 +3924,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                     }
 
                     if (isset($viewedShaByEmail[$email]) && ! hash_equals($viewedShaByEmail[$email], $signedSha)) {
-                        report("{$label}: signer {$email} viewed sha256 {$viewedShaByEmail[$email]} but signed {$signedSha} — the viewed and signed versions must be the same");
+                        report("{$label}: signer {$email} viewed sha256 {$viewedShaByEmail[$email]} but signed {$signedSha}: the viewed and signed versions must be the same");
                     }
                 }
 
@@ -3947,8 +3955,8 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                 }
             }
 
-            note("signatures.json: {$checkedSignatures} signature(s) verified against their ledgered events — viewed and signed hashes agree");
-            note('signatures.json is informational metadata: its facts are cross-checked against the chain above, and everything else in it — including any claim about legal effect or validity — is ignored and cannot influence the verdict');
+            note('signatures.json: '.count_noun($checkedSignatures, 'signature')." verified against their ledgered events: viewed and signed hashes agree");
+            note('signatures.json is informational metadata: its facts are cross-checked against the chain above, and everything else in it, including any claim about legal effect or validity, is ignored and cannot influence the verdict');
         }
     }
 
@@ -3961,7 +3969,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
         $linkRecords = $linksDocument instanceof stdClass ? ($linksDocument->links ?? null) : null;
 
         if (! is_array($linkRecords)) {
-            report('links.json is present but malformed — expected a "links" list');
+            report('links.json is present but malformed: expected a "links" list');
         } else {
             $resolvedLinks = 0;
 
@@ -3975,7 +3983,7 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
 
                     if ($sequence === null) {
                         if ($field === 'linked_sequence') {
-                            report("{$linkLabel} has no linked_sequence — a link must point at its ledgered fact");
+                            report("{$linkLabel} has no linked_sequence: a link must point at its ledgered fact");
                             $resolved = false;
                         }
 
@@ -4010,8 +4018,8 @@ function verify_bundle(string $target, bool $skipAnchors, bool $collectLeaves = 
                 }
             }
 
-            note("links.json: {$resolvedLinks} link fact(s) resolve to their ledgered document.linked/document.unlinked events with matching hashes");
-            note('a link records that the exporting tenant associated a document with these events at a provable time; it asserts nothing about legal effect, which this verifier neither checks nor reports');
+            note('links.json: '.count_noun($resolvedLinks, 'link fact').($resolvedLinks === 1 ? ' resolves' : ' resolve')." to their ledgered document.linked/document.unlinked events with matching hashes");
+            note('a link records that the exporting workspace associated a document with these events at a provable time; it asserts nothing about legal effect, which this verifier neither checks nor reports');
         }
     }
 
@@ -5111,7 +5119,7 @@ function reconcile_registry(array $registry, array $log, array $receiptPaths): a
         }
 
         if ($count !== 1) {
-            reason_fail('PARENT_UNMATCHED', "registry event {$sequence} is accepted by {$count} decision(s), not exactly one");
+            reason_fail('PARENT_UNMATCHED', "registry event {$sequence} is accepted by ".count_noun($count, 'decision').", not exactly one");
         }
     }
 
@@ -5488,7 +5496,7 @@ if ($receiptFile !== null && ! $reconcileMode && ! $consistencyMode && count($ta
     $code = verdict_code();
 
     if ($code === EXIT_FAIL) {
-        out('FAIL: '.count($failures)." problem(s) found. This receipt does NOT hold.\n");
+        out('FAIL: '.count_noun(count($failures), 'problem')." found. This receipt does NOT hold.\n");
     } elseif ($code === EXIT_UNCONFIRMED) {
         out("UNCONFIRMED: nothing here contradicts the receipt, but whose signature it carries is not established.\n");
     } else {
@@ -5575,7 +5583,7 @@ if ($reconcileMode && $receiptFile === null && ! $consistencyMode && count($targ
     $code = verdict_code();
 
     if ($code === EXIT_FAIL) {
-        out('FAIL: '.count($failures).' problem(s) found'.(run_reason() !== null ? ', the first rule broken being '.run_reason() : '').". The registry does NOT account for every request.\n");
+        out('FAIL: '.count_noun(count($failures), 'problem').' found'.(run_reason() !== null ? ', the first rule broken being '.run_reason() : '').". The registry does NOT account for every request.\n");
     } elseif ($code === EXIT_UNCONFIRMED) {
         out("UNCONFIRMED: no rule is broken, but not every check could be made (an unknown signing key, or a record past the other bundle's range) - see the results below.\n");
     } else {
@@ -5627,19 +5635,19 @@ if (! $consistencyMode) {
     $code = verdict_code();
 
     if ($code === EXIT_FAIL) {
-        out('FAIL: '.count($failures)." problem(s) found. This bundle does NOT verify.\n");
+        out('FAIL: '.count_noun(count($failures), 'problem')." found. This bundle does NOT verify.\n");
     } else {
-        out("{$result['event_count']} events and {$result['checkpoint_count']} checkpoints verified for stream {$result['stream_id']} ({$result['range_from']}..{$result['range_to']}).\n");
+        out(count_noun($result['event_count'], 'event').' and '.count_noun($result['checkpoint_count'], 'checkpoint')." verified for stream {$result['stream_id']} ({$result['range_from']}..{$result['range_to']}).\n");
         out("No event has been modified, deleted, or reordered, and every checkpoint signature is genuine.\n");
 
         if ($result['redacted_count'] > 0) {
-            out("Redactions: {$result['redacted_count']} payload(s) were destroyed by the tenant, each named by an authenticated declaration in this bundle; their hashes are preserved and the chain is intact.\n");
+            out('Redactions: '.count_noun($result['redacted_count'], 'payload').($result['redacted_count'] === 1 ? ' was' : ' were')." destroyed by the workspace, each named by an authenticated declaration in this bundle; their hashes are preserved and the chain is intact.\n");
         }
 
         if (($result['collection'] ?? null) !== null) {
             $collection = $result['collection'];
 
-            out("Collection records: {$collection['receipts']} receipt(s) chained on {$collection['streams']} stream(s), {$collection['gaps']} gap(s) declared, {$collection['settlements']} settlement record(s); every link inside the range holds.\n");
+            out('Collection records: '.count_noun($collection['receipts'], 'receipt').' chained on '.count_noun($collection['streams'], 'stream').', '.count_noun($collection['gaps'], 'gap').' declared, '.count_noun($collection['settlements'], 'settlement record')."; every link inside the range holds.\n");
         }
 
         if ($code === EXIT_UNCONFIRMED) {
@@ -5707,7 +5715,7 @@ if (count($targets) === 2 && $recordedRoot === null && $recordedSize === null) {
     }
 
     if ($old['range_to'] > $new['range_to']) {
-        report('the old bundle covers more events than the new one — pass the older bundle first');
+        report('the old bundle covers more events than the new one: pass the older bundle first');
     }
 
     $consistency = null;
@@ -5721,7 +5729,7 @@ if (count($targets) === 2 && $recordedRoot === null && $recordedSize === null) {
         $prefixRoot = merkle_root(array_slice($newLeaves, 0, $old['range_to']));
 
         if (! hash_equals($oldRoot, $prefixRoot)) {
-            report('the new bundle does NOT extend the old one: its first '.$old['range_to'].' entries hash to a different root — history diverged');
+            report('the new bundle does NOT extend the old one: its first '.$old['range_to'].' entries hash to a different root: history diverged');
         } else {
             $proof = consistency_proof($newLeaves, $old['range_to']);
 
@@ -5736,7 +5744,7 @@ if (count($targets) === 2 && $recordedRoot === null && $recordedSize === null) {
 
                 out('  old  tree_size='.$old['range_to'].' root='.bin2hex($oldRoot)."\n");
                 out('  new  tree_size='.$new['range_to'].' root='.bin2hex($newRoot)."\n");
-                out('  proof '.count($proof)." node(s) verified\n");
+                out('  proof '.count_noun(count($proof), 'node')." verified\n");
             }
         }
     }
@@ -5746,7 +5754,7 @@ if (count($targets) === 2 && $recordedRoot === null && $recordedSize === null) {
     $code = verdict_code();
 
     if ($code === EXIT_FAIL) {
-        out('FAIL: '.count($failures)." problem(s) found. Consistency does NOT hold.\n");
+        out('FAIL: '.count_noun(count($failures), 'problem')." found. Consistency does NOT hold.\n");
     } else {
         out("PASS: the new bundle is an append-only extension of the old bundle.\n");
         out("Nothing recorded in the old export was modified, deleted, or reordered in the new one.\n");
@@ -5785,7 +5793,7 @@ if (count($targets) === 1 && is_string($recordedRoot) && is_int($recordedSize)) 
         if (! hash_equals($recordedRoot, $prefixRoot)) {
             report("this bundle does NOT extend the recorded state: its first {$recordedSize} entries hash to {$prefixRoot}, not the recorded root");
         } else {
-            out("  recorded tree_size={$recordedSize} root={$recordedRoot} — matches this bundle's prefix\n");
+            out("  recorded tree_size={$recordedSize} root={$recordedRoot}: matches this bundle's prefix\n");
         }
     }
 
@@ -5794,7 +5802,7 @@ if (count($targets) === 1 && is_string($recordedRoot) && is_int($recordedSize)) 
     $code = verdict_code();
 
     if ($code === EXIT_FAIL) {
-        out('FAIL: '.count($failures)." problem(s) found. Consistency does NOT hold.\n");
+        out('FAIL: '.count_noun(count($failures), 'problem')." found. Consistency does NOT hold.\n");
     } else {
         out("PASS: this bundle is an append-only extension of the recorded state.\n");
     }

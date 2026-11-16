@@ -129,7 +129,7 @@ func ConsistencyBundles(oldPath, newPath string, opts Options) *Report {
 				}
 				r.info(fmt.Sprintf("  old  tree_size=%d root=%s", old.rangeTo, oldRoot))
 				r.info(fmt.Sprintf("  new  tree_size=%d root=%s", newer.rangeTo, newRoot))
-				r.info(fmt.Sprintf("  proof %d node(s) verified", len(newer.proofNodes)))
+				r.info(fmt.Sprintf("  proof %s verified", CountNoun(len(newer.proofNodes), "node")))
 			}
 		}
 	}

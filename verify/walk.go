@@ -247,7 +247,7 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 
 	r.info(fmt.Sprintf("Stream: %s", stream))
 	r.info(fmt.Sprintf("Range:  %d..%d", rangeFrom, rangeTo))
-	r.info(fmt.Sprintf("Keys:   %d trusted signing key(s) in manifest", len(manifestKeys)))
+	r.info(fmt.Sprintf("Keys:   %s in manifest", CountNoun(len(manifestKeys), "trusted signing key")))
 
 	// ---- redactions.json (1.2, optional) -------------------------------------
 
@@ -571,7 +571,7 @@ func (r *run) verifyBundle(target string, skipAnchors bool, wopts *walkOptions, 
 		createdAtText := text(cp.Field("created_at"))
 		if trusted == nil {
 			r.keys.set(fingerprint, "bundle only")
-			r.unconfirmed(fmt.Sprintf("%s: signed by key %s, which is not in the %s - the bundle is internally consistent, but nothing here establishes that Sigilbase produced it", label, fingerprint, r.trustedSetSource), ResultIdentity)
+			r.unconfirmed(fmt.Sprintf("%s: signed by key %s, which is not among the %s - the bundle is internally consistent, but nothing here establishes that Sigilbase produced it", label, fingerprint, r.trustedSetSource), ResultIdentity)
 			// Fall back to the window the manifest states: it is the only
 			// window information available, and a bundle that contradicts
 			// itself is still worth catching.

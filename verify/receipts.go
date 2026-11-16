@@ -1258,7 +1258,7 @@ func (r *run) reconcileRegistry(registry, log *verifiedBundle, receiptPaths []st
 			continue
 		}
 		if count != 1 {
-			r.reasonFail("PARENT_UNMATCHED", fmt.Sprintf("registry event %d is accepted by %d decision(s), not exactly one", sequence, count), ResultContent)
+			r.reasonFail("PARENT_UNMATCHED", fmt.Sprintf("registry event %d is accepted by %s, not exactly one", sequence, CountNoun(count, "decision")), ResultContent)
 		}
 	}
 

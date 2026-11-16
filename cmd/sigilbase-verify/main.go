@@ -276,7 +276,7 @@ func Human(rep *verify.Report) string {
 	case "verify":
 		switch rep.ExitCode {
 		case verify.ExitFail:
-			w("FAIL: %d problem(s) found. This bundle does NOT verify.\n", problems)
+			w("FAIL: %s found. This bundle does NOT verify.\n", verify.CountNoun(problems, "problem"))
 		case verify.ExitUnconfirmed:
 			w("UNCONFIRMED: the maths holds and nothing here has been altered, but this bundle's\norigin is not established (see the results below). It is not evidence of tampering,\nand it is not a pass.\n")
 		default:
@@ -285,7 +285,7 @@ func Human(rep *verify.Report) string {
 	case "receipt":
 		switch rep.ExitCode {
 		case verify.ExitFail:
-			w("FAIL: %d problem(s) found, the first being %s. This receipt does NOT hold.\n", problems, reasonText(rep.Reason))
+			w("FAIL: %s found, the first being %s. This receipt does NOT hold.\n", verify.CountNoun(problems, "problem"), reasonText(rep.Reason))
 		case verify.ExitUnconfirmed:
 			w("UNCONFIRMED: nothing here contradicts the receipt, but whose signature it carries is not established (%s).\n", reasonText(rep.Reason))
 		default:
@@ -298,7 +298,7 @@ func Human(rep *verify.Report) string {
 	case "reconcile":
 		switch rep.ExitCode {
 		case verify.ExitFail:
-			w("FAIL: %d problem(s) found, the first rule broken being %s. The registry does NOT account for every request.\n", problems, reasonText(rep.Reason))
+			w("FAIL: %s found, the first rule broken being %s. The registry does NOT account for every request.\n", verify.CountNoun(problems, "problem"), reasonText(rep.Reason))
 		case verify.ExitUnconfirmed:
 			w("UNCONFIRMED: no rule is broken, but not every check could be made (an unknown signing key, or a record past the other bundle's range) - see the results below.\n")
 		default:
@@ -307,7 +307,7 @@ func Human(rep *verify.Report) string {
 		w("No one can show a request that never reached Sigilbase: this proves what was received, not what was sent.\n")
 	default:
 		if rep.ExitCode == verify.ExitFail {
-			w("FAIL: %d problem(s) found. Consistency does NOT hold.\n", problems)
+			w("FAIL: %s found. Consistency does NOT hold.\n", verify.CountNoun(problems, "problem"))
 		} else if rep.Mode == "consistency-bundles" {
 			w("%s: the new bundle is an append-only extension of the old bundle.\nNothing recorded in the old export was modified, deleted, or reordered in the new one.\n", verify.VerdictWord(rep.ExitCode))
 		} else {
@@ -342,13 +342,17 @@ func Human(rep *verify.Report) string {
 	}
 
 	if rep.Mode == "verify" && rep.ExitCode != verify.ExitFail {
-		w("\n%d events and %d checkpoints verified for stream %s (%d..%d).\n", rep.Bundle.Events, rep.Bundle.Checkpoints, rep.Bundle.Stream, rep.Bundle.Range.From, rep.Bundle.Range.To)
+		w("\n%s and %s verified for stream %s (%d..%d).\n", verify.CountNoun(rep.Bundle.Events, "event"), verify.CountNoun(rep.Bundle.Checkpoints, "checkpoint"), rep.Bundle.Stream, rep.Bundle.Range.From, rep.Bundle.Range.To)
 		w("No event has been modified, deleted, or reordered, and every checkpoint signature is genuine.\n")
 		if c := rep.Bundle.Collection; c != nil {
-			w("Collection records: %d receipt(s) chained on %d stream(s), %d gap(s) declared, %d settlement record(s); every link inside the range holds.\n", c.Receipts, c.Streams, c.Gaps, c.Settlements)
+			w("Collection records: %s chained on %s, %s declared, %s; every link inside the range holds.\n", verify.CountNoun(c.Receipts, "receipt"), verify.CountNoun(c.Streams, "stream"), verify.CountNoun(c.Gaps, "gap"), verify.CountNoun(c.Settlements, "settlement record"))
 		}
 		if rep.Bundle.RedactedEvents > 0 {
-			w("Redactions: %d payload(s) were destroyed by the tenant, each named by an authenticated declaration in this bundle; their hashes are preserved and the chain is intact.\n", rep.Bundle.RedactedEvents)
+			verb := "were"
+			if rep.Bundle.RedactedEvents == 1 {
+				verb = "was"
+			}
+			w("Redactions: %s %s destroyed by the workspace, each named by an authenticated declaration in this bundle; their hashes are preserved and the chain is intact.\n", verify.CountNoun(rep.Bundle.RedactedEvents, "payload"), verb)
 		}
 	}
 

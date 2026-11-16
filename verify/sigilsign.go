@@ -241,7 +241,7 @@ func (r *run) checkSigilSign(b bundle.Reader) *hardError {
 					checked++
 				}
 			}
-			r.note(fmt.Sprintf("signatures.json: %d signature(s) verified against their ledgered events - viewed and signed hashes agree", checked))
+			r.note(fmt.Sprintf("signatures.json: %s verified against their ledgered events - viewed and signed hashes agree", CountNoun(checked, "signature")))
 			r.note("signatures.json is informational metadata: its facts are cross-checked against the chain above, and everything else in it - including any claim about legal effect or validity - is ignored and cannot influence the verdict")
 		}
 	}
@@ -297,8 +297,12 @@ func (r *run) checkSigilSign(b bundle.Reader) *hardError {
 					resolvedLinks++
 				}
 			}
-			r.note(fmt.Sprintf("links.json: %d link fact(s) resolve to their ledgered document.linked/document.unlinked events with matching hashes", resolvedLinks))
-			r.note("a link records that the exporting tenant associated a document with these events at a provable time; it asserts nothing about legal effect, which this verifier neither checks nor reports")
+			verb := "resolve"
+			if resolvedLinks == 1 {
+				verb = "resolves"
+			}
+			r.note(fmt.Sprintf("links.json: %s %s to their ledgered document.linked/document.unlinked events with matching hashes", CountNoun(resolvedLinks, "link fact"), verb))
+			r.note("a link records that the exporting workspace associated a document with these events at a provable time; it asserts nothing about legal effect, which this verifier neither checks nor reports")
 		}
 	}
 	return nil
